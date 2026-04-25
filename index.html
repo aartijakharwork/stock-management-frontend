@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>ShopManager</title>
+    <script>
+      // Apply persisted theme before paint to avoid FOUC.
+      (function () {
+        try {
+          var saved = localStorage.getItem('shopmanager.theme');
+          var isDark = saved ? saved === 'dark' : true;
+          if (isDark) document.documentElement.classList.add('dark');
+          document.querySelector('meta[name="theme-color"]')?.remove();
+          var meta = document.createElement('meta');
+          meta.name = 'theme-color';
+          meta.content = isDark ? '#000000' : '#f9fafb';
+          document.head.appendChild(meta);
+        } catch (_) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
