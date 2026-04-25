@@ -1,0 +1,145 @@
+@import "tailwindcss";
+
+/* ================================================================
+   🎨 PRIMARY COLOR — CHANGE ONLY THIS BLOCK TO REBRAND THE APP
+   Replace all 10 values below with your desired color palette.
+   Current: Teal (#25CBA1)
+   Examples:
+     Blue:    #eff6ff, #dbeafe, #bfdbfe, #93c5fd, #60a5fa, #3b82f6, #2563eb, #1d4ed8, #1e40af, #1e3a8a
+     Green:   #f0fdf4, #dcfce7, #bbf7d0, #86efac, #4ade80, #22c55e, #16a34a, #15803d, #166534, #14532d
+     Purple:  #faf5ff, #f3e8ff, #e9d5ff, #d8b4fe, #c084fc, #a855f7, #9333ea, #7e22ce, #6b21a8, #581c87
+   ================================================================ */
+@theme {
+  --color-primary-50: #edfcf7;
+  --color-primary-100: #d3f8ea;
+  --color-primary-200: #aaf0d9;
+  --color-primary-300: #73e2c3;
+  --color-primary-400: #25cba1;
+  --color-primary-500: #12b48e;
+  --color-primary-600: #0a9174;
+  --color-primary-700: #0d7460;
+  --color-primary-800: #105c4e;
+  --color-primary-900: #124b41;
+}
+
+/* ================================================================
+   Light mode — Jampack Classic style
+   ================================================================ */
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f5;
+  --bg-tertiary: #ebeef2;
+  --text-primary: #2a3547;
+  --text-secondary: #5a6a85;
+  --text-tertiary: #a1aab5;
+  --border-color: #e5eaef;
+  --card-bg: #ffffff;
+  --hover-bg: #f6f9fc;
+  --input-bg: #ffffff;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.08);
+
+  --sidebar-bg: #ffffff;
+  --sidebar-text: #2a3547;
+  --sidebar-text-muted: #5a6a85;
+  --sidebar-hover: #f6f9fc;
+  --sidebar-active-bg: #edfcf7;
+  --sidebar-active-text: var(--color-primary-400);
+  --sidebar-border: #e5eaef;
+  --sidebar-section-label: #a1aab5;
+}
+
+/* ================================================================
+   Dark mode
+   ================================================================ */
+.dark {
+  --bg-primary: #171c23;
+  --bg-secondary: #12171e;
+  --bg-tertiary: #202634;
+  --text-primary: #dfe5ef;
+  --text-secondary: #7c8fac;
+  --text-tertiary: #4a5568;
+  --border-color: #2a3140;
+  --card-bg: #1c2231;
+  --hover-bg: #202634;
+  --input-bg: #171c23;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.3);
+
+  --sidebar-bg: #1c2231;
+  --sidebar-text: #dfe5ef;
+  --sidebar-text-muted: #5a6a85;
+  --sidebar-hover: #202634;
+  --sidebar-active-bg: rgba(37, 203, 161, 0.1);
+  --sidebar-active-text: var(--color-primary-400);
+  --sidebar-border: #2a3140;
+  --sidebar-section-label: #4a5568;
+}
+
+/* ================================================================
+   Base styles
+   ================================================================ */
+body {
+  margin: 0;
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid var(--color-primary-400);
+  outline-offset: -1px;
+}
+
+/* ================================================================
+   Animations
+   ================================================================ */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes countUp {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out both;
+}
+
+.animate-fade-in-up-1 { animation-delay: 0ms; }
+.animate-fade-in-up-2 { animation-delay: 80ms; }
+.animate-fade-in-up-3 { animation-delay: 160ms; }
+.animate-fade-in-up-4 { animation-delay: 240ms; }
+
+.animate-count-up {
+  animation: countUp 0.6s ease-out both;
+  animation-delay: 300ms;
+}
+
+@media print {
+  .no-print { display: none !important; }
+}
