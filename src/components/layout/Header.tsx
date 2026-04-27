@@ -1,72 +1,87 @@
-import { Menu, Bell, Search, Sun, Moon } from 'lucide-react';
+import { Menu, Bell, Sun, Moon, LogOut, ChevronDown } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
 import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 interface HeaderProps {
   onMenuClick: () => void;
-  title: string;
 }
 
-export function Header({ onMenuClick, title }: HeaderProps) {
+export function Header({ onMenuClick }: HeaderProps) {
   const { theme, toggleTheme } = useTheme();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/auth/login');
+  };
+
+  const initial = user?.name?.charAt(0).toUpperCase() || '?';
 
   return (
-    <header className="fixed top-0 inset-x-0 z-40 h-16 border-b border-gray-200 bg-white/80 backdrop-blur-sm dark:border-white/5 dark:bg-black/50">
-      <div className="max-w-7xl mx-auto h-full px-4 sm:px-6 lg:px-8 lg:pl-72 flex items-center gap-3">
+    <header className="sticky top-0 z-30 h-16 border-b border-gray-200 bg-white/95 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-950/95">
+      <div className="h-full px-4 sm:px-6 flex items-center gap-3">
         <button
           onClick={onMenuClick}
-          className="lg:hidden p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/5 transition-colors"
+          className="lg:hidden p-2 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-800 transition-colors"
           aria-label="Open menu"
         >
-          <Menu size={22} strokeWidth={1.8} />
+          <Menu size={20} />
         </button>
 
-        <h1 className="lg:hidden text-base font-semibold text-gray-900 dark:text-white">
-          {title}
-        </h1>
+        <div className="flex-1" />
 
-        <div className="hidden lg:block relative">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
-            strokeWidth={1.8}
-          />
-          <input
-            type="text"
-            placeholder="Search..."
-            className="bg-white border border-gray-200 rounded-md pl-9 pr-3 h-9 text-[13px] text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none transition-colors w-72 dark:bg-white/5 dark:border-white/10 dark:text-gray-300 dark:placeholder-gray-500 dark:focus:border-cyan-400/60"
-          />
-        </div>
+        <button
+          onClick={toggleTheme}
+          className="p-2 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-800 transition-colors"
+          aria-label="Toggle theme"
+        >
+          {theme === 'dark' ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} />}
+        </button>
 
-        <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+        <button className="relative p-2 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-800 transition-colors">
+          <Bell size={18} />
+          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-500" />
+        </button>
+
+        <div className="relative" ref={menuRef}>
           <button
-            onClick={toggleTheme}
-            className="p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/5 transition-colors"
-            aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-            title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
-            {theme === 'dark' ? (
-              <Sun size={20} strokeWidth={1.8} className="text-amber-300" />
-            ) : (
-              <Moon size={20} strokeWidth={1.8} />
-            )}
+            <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center text-emerald-700 dark:text-emerald-400 text-sm font-semibold">
+              {initial}
+            </div>
+            <div className="hidden sm:block text-left">
+              <p className="text-sm font-medium text-gray-900 dark:text-white leading-tight">{user?.name}</p>
+              <p className="text-[11px] text-gray-500 capitalize">{user?.role}</p>
+            </div>
+            <ChevronDown size={14} className="text-gray-400" />
           </button>
 
-          <button
-            className="relative p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/5 transition-colors"
-            aria-label="Notifications"
-          >
-            <Bell size={22} strokeWidth={1.8} />
-            <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-cyan-600 dark:bg-cyan-500 text-white text-[10px] font-bold flex items-center justify-center">
-              4
-            </span>
-          </button>
-
-          <button
-            className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-200 to-cyan-200 border border-gray-200 dark:from-purple-500/40 dark:to-cyan-500/40 dark:border-white/10 flex items-center justify-center text-gray-900 dark:text-white text-[13px] font-bold transition-colors hover:border-gray-300 dark:hover:border-white/20"
-            aria-label="Account"
-          >
-            K
-          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-gray-200 bg-white dark:bg-gray-900 dark:border-gray-800 shadow-lg py-1">
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                <LogOut size={15} />
+                Sign out
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>

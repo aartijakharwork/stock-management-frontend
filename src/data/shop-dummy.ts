@@ -5,7 +5,62 @@ import type {
   StaffMember,
   Role,
   SubscriptionPlan,
+  StaffInvite,
+  RolePermissions,
+  ALL_MODULE_PERMISSIONS,
 } from '../types';
+
+const fullAccess = { view: true, add: true, edit: true, delete: true };
+const viewOnly = { view: true, add: false, edit: false, delete: false };
+const noAccess = { view: false, add: false, edit: false, delete: false };
+
+export const roles: Role[] = [
+  {
+    id: '1',
+    name: 'Manager',
+    permissions: {
+      dashboard: fullAccess,
+      inventory: fullAccess,
+      billing: fullAccess,
+      customers: fullAccess,
+      bills: fullAccess,
+      staff: { view: true, add: true, edit: true, delete: false },
+      roles: viewOnly,
+      settings: viewOnly,
+      subscription: viewOnly,
+    },
+  },
+  {
+    id: '2',
+    name: 'Cashier',
+    permissions: {
+      dashboard: viewOnly,
+      inventory: viewOnly,
+      billing: fullAccess,
+      customers: { view: true, add: true, edit: false, delete: false },
+      bills: viewOnly,
+      staff: noAccess,
+      roles: noAccess,
+      settings: noAccess,
+      subscription: noAccess,
+    },
+  },
+  {
+    id: '3',
+    name: 'Inventory Staff',
+    permissions: {
+      dashboard: viewOnly,
+      inventory: fullAccess,
+      billing: noAccess,
+      customers: noAccess,
+      bills: noAccess,
+      staff: noAccess,
+      roles: noAccess,
+      settings: noAccess,
+      subscription: noAccess,
+    },
+  },
+];
 
 export const inventoryItems: InventoryItem[] = [
   { id: '1', name: 'Engine Oil 5W-30', price: 450, stock: 24, category: 'Oils', unit: 'bottle' },
@@ -54,9 +109,7 @@ export const bills: Bill[] = [
     id: 'B002',
     date: '2026-04-25',
     customerName: 'Walk-in',
-    items: [
-      { ...inventoryItems[3], quantity: 4 },
-    ],
+    items: [{ ...inventoryItems[3], quantity: 4 }],
     total: 1280,
     isUdhaar: false,
     paid: true,
@@ -79,9 +132,7 @@ export const bills: Bill[] = [
     date: '2026-04-24',
     customerName: 'Vikram Singh',
     customerId: '4',
-    items: [
-      { ...inventoryItems[7], quantity: 1 },
-    ],
+    items: [{ ...inventoryItems[7], quantity: 1 }],
     total: 4500,
     isUdhaar: true,
     paid: false,
@@ -114,28 +165,15 @@ export const bills: Bill[] = [
 ];
 
 export const staffMembers: StaffMember[] = [
-  { id: '1', name: 'Rahul Mehta', phone: '9876543220', role: 'Manager', active: true },
-  { id: '2', name: 'Priya Sharma', phone: '9876543221', role: 'Cashier', active: true },
-  { id: '3', name: 'Karan Singh', phone: '9876543222', role: 'Inventory Staff', active: true },
-  { id: '4', name: 'Neha Gupta', phone: '9876543223', role: 'Cashier', active: false },
+  { id: '1', name: 'Rahul Mehta', email: 'rahul@kumarauto.in', phone: '9876543220', role: 'Manager', roleId: '1', active: true, joinedAt: '2026-01-20' },
+  { id: '2', name: 'Priya Sharma', email: 'priya@kumarauto.in', phone: '9876543221', role: 'Cashier', roleId: '2', active: true, joinedAt: '2026-02-15' },
+  { id: '3', name: 'Karan Singh', email: 'karan@kumarauto.in', phone: '9876543222', role: 'Inventory Staff', roleId: '3', active: true, joinedAt: '2026-03-01' },
+  { id: '4', name: 'Neha Gupta', email: 'neha@kumarauto.in', phone: '9876543223', role: 'Cashier', roleId: '2', active: false, joinedAt: '2026-01-10' },
 ];
 
-export const roles: Role[] = [
-  {
-    id: '1',
-    name: 'Manager',
-    permissions: { inventory: true, billing: true, udhaar: true, reports: true, staff: true, settings: true },
-  },
-  {
-    id: '2',
-    name: 'Cashier',
-    permissions: { inventory: false, billing: true, udhaar: true, reports: false, staff: false, settings: false },
-  },
-  {
-    id: '3',
-    name: 'Inventory Staff',
-    permissions: { inventory: true, billing: false, udhaar: false, reports: false, staff: false, settings: false },
-  },
+export const staffInvites: StaffInvite[] = [
+  { id: 'si-1', staffName: 'Arjun Verma', staffEmail: 'arjun@email.com', staffPhone: '9876543230', roleId: '2', roleName: 'Cashier', token: 'inv-abc123', status: 'pending', createdAt: '2026-04-20', expiresAt: '2026-04-27' },
+  { id: 'si-2', staffName: 'Meena Devi', staffEmail: 'meena@email.com', staffPhone: '9876543231', roleId: '3', roleName: 'Inventory Staff', token: 'inv-def456', status: 'accepted', createdAt: '2026-04-10', expiresAt: '2026-04-17' },
 ];
 
 export const subscriptionPlans: SubscriptionPlan[] = [

@@ -1,23 +1,16 @@
 @import "tailwindcss";
 
-/* Class-based dark mode: `dark:` activates when <html class="dark">. */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* ================================================================
-   Both themes use the same accent vocabulary (cyan, purple, emerald,
-   amber, red). Surfaces, borders, and neutrals flip per mode through
-   Tailwind's dark: variant directly on each element.
-   ================================================================ */
-
 html, body {
-  background: #f9fafb;          /* gray-50 */
-  color: #111827;               /* gray-900 */
+  background: #f9fafb;
+  color: #111827;
   transition: background-color 200ms ease, color 200ms ease;
 }
 
 html.dark, html.dark body {
-  background: #000;
-  color: #d1d5db;               /* gray-300 */
+  background: #030712;
+  color: #d1d5db;
 }
 
 body {
@@ -31,40 +24,34 @@ body {
   min-height: 100vh;
 }
 
-/* Scrollbar — themed per mode */
+/* Scrollbar */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(0, 0, 0, 0.18) transparent;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
 }
 html.dark * {
-  scrollbar-color: rgba(255, 255, 255, 0.10) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
 }
-*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar { width: 6px; height: 6px; }
 *::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 8px; }
-*::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.28); }
-html.dark *::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); }
-html.dark *::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.16); }
+*::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 6px; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
+html.dark *::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); }
+html.dark *::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.12); }
 
-/* Focus ring */
+/* Focus ring — green */
 input:focus, select:focus, textarea:focus {
-  outline: 1px solid rgb(8 145 178 / 0.7);    /* cyan-700 in light */
-  outline-offset: -1px;
-}
-html.dark input:focus, html.dark select:focus, html.dark textarea:focus {
-  outline: 1px solid rgb(34 211 238 / 0.6);   /* cyan-400 in dark */
+  outline: none;
 }
 
-/* Animations */
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+/* Toast slide in */
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: translateX(0); }
 }
-.animate-fade-in-up { animation: fadeInUp 0.35s ease-out both; }
-.animate-fade-in-up-1 { animation-delay: 0ms; }
-.animate-fade-in-up-2 { animation-delay: 60ms; }
-.animate-fade-in-up-3 { animation-delay: 120ms; }
-.animate-fade-in-up-4 { animation-delay: 180ms; }
+.animate-slide-in {
+  animation: slideIn 0.25s ease-out both;
+}
 
 @media print {
   .no-print { display: none !important; }

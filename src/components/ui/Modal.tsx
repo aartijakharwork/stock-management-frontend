@@ -37,16 +37,16 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 dark:bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center">
+    <div className="fixed inset-0 z-50 bg-black/40 dark:bg-black/60 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0" onClick={onClose} />
       <div
-        className={`relative w-full ${sizeClasses[size]} max-h-[90vh] overflow-y-auto rounded-t-xl sm:rounded-xl bg-white dark:bg-[#0b0b0d] border border-gray-200 dark:border-white/10 shadow-2xl`}
+        className={`relative w-full ${sizeClasses[size]} max-h-[90vh] overflow-y-auto rounded-t-xl sm:rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl`}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-white/5">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-800">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{title}</h2>
           <button
             onClick={onClose}
-            className="p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/5 transition-colors"
+            className="p-2 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-800 transition-colors"
             aria-label="Close"
           >
             <X size={18} />

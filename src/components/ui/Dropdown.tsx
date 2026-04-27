@@ -16,13 +16,13 @@ export function Dropdown({ label, options, placeholder, className = '', id, ...p
   return (
     <div className="flex flex-col gap-1.5">
       {label && (
-        <label htmlFor={selectId} className="text-[11px] uppercase tracking-[0.2em] text-gray-500 font-medium">
+        <label htmlFor={selectId} className="text-sm font-medium text-gray-700 dark:text-gray-300">
           {label}
         </label>
       )}
       <select
         id={selectId}
-        className={`w-full h-10 rounded-md bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 px-3 text-sm text-gray-900 dark:text-white focus:border-cyan-500 dark:focus:border-cyan-400/60 transition-colors outline-none ${className}`}
+        className={`w-full h-10 rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 px-3 text-sm text-gray-900 dark:text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:focus:border-emerald-500 transition-colors outline-none ${className}`}
         {...props}
       >
         {placeholder && <option value="">{placeholder}</option>}
