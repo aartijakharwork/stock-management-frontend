@@ -110,8 +110,12 @@ export interface SubscriptionPlan {
   name: string;
   price: number;
   period: string;
+  duration: string;
+  perMonthPrice: number;
   features: string[];
   recommended: boolean;
+  savingsLabel?: string;
+  tag?: string;
 }
 
 export type ShopStatus = 'active' | 'inactive' | 'suspended';

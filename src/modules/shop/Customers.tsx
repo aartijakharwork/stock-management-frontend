@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Phone, Eye, CircleDollarSign, Users, AlertCircle } from 'lucide-react';
+import { Plus, Phone, Eye, CircleDollarSign, Users, AlertCircle, ShieldCheck } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { SearchInput } from '../../components/ui/SearchInput';
 import { Table } from '../../components/ui/Table';
@@ -17,6 +17,12 @@ import type { Customer } from '../../types';
 
 type DuesFilter = '' | 'with' | 'cleared';
 
+function getSecuritySettings() {
+  const enabled = localStorage.getItem('shopmanager.security.enabled') === 'true';
+  const code = localStorage.getItem('shopmanager.security.code') || '';
+  return { enabled: enabled && code.length > 0, code };
+}
+
 export function ShopCustomers() {
   const [customersList, setCustomers] = useState(initialCustomers);
   const [bills, setBills] = useState(initialBills);
@@ -26,6 +32,10 @@ export function ShopCustomers() {
   const [form, setForm] = useState({ name: '', phone: '', address: '' });
   const [formError, setFormError] = useState<{ name?: string; phone?: string }>({});
   const [selected, setSelected] = useState<Customer | null>(null);
+  const [securityOpen, setSecurityOpen] = useState(false);
+  const [settleTarget, setSettleTarget] = useState<Customer | null>(null);
+  const [securityInput, setSecurityInput] = useState('');
+  const [securityError, setSecurityError] = useState('');
   const { addToast } = useToast();
   const { can } = usePermissions();
 
@@ -66,12 +76,36 @@ export function ShopCustomers() {
     addToast('success', 'Customer added');
   };
 
-  const settleDues = (customer: Customer) => {
-    if (customer.pendingAmount === 0) return;
+  const doSettle = (customer: Customer) => {
     setCustomers(prev => prev.map(c => (c.id === customer.id ? { ...c, pendingAmount: 0 } : c)));
     setBills(prev => prev.map(b => b.customerId === customer.id && b.isUdhaar && !b.paid ? { ...b, paid: true } : b));
     if (selected?.id === customer.id) setSelected({ ...customer, pendingAmount: 0 });
     addToast('success', 'Dues settled', `${formatCurrency(customer.pendingAmount)} received from ${customer.name}`);
+  };
+
+  const requestSettle = (customer: Customer) => {
+    if (customer.pendingAmount === 0) return;
+    const security = getSecuritySettings();
+    if (security.enabled) {
+      setSettleTarget(customer);
+      setSecurityInput('');
+      setSecurityError('');
+      setSecurityOpen(true);
+    } else {
+      doSettle(customer);
+    }
+  };
+
+  const confirmSettle = () => {
+    const security = getSecuritySettings();
+    if (securityInput !== security.code) {
+      setSecurityError('Invalid security code');
+      return;
+    }
+    if (!settleTarget) return;
+    doSettle(settleTarget);
+    setSecurityOpen(false);
+    setSettleTarget(null);
   };
 
   const customerBills = useMemo(() => selected ? bills.filter(b => b.customerId === selected.id) : [], [selected, bills]);
@@ -115,7 +149,7 @@ export function ShopCustomers() {
             { key: 'actions', header: '', className: 'text-right', render: c => (
               <div className="flex items-center justify-end gap-2">
                 <Button variant="ghost" size="sm" icon={<Eye size={14} />} onClick={e => { e.stopPropagation(); setSelected(c); }}>View</Button>
-                {canEdit && c.pendingAmount > 0 && <Button variant="primary" size="sm" onClick={e => { e.stopPropagation(); settleDues(c); }}>Settle</Button>}
+                {canEdit && c.pendingAmount > 0 && <Button variant="primary" size="sm" onClick={e => { e.stopPropagation(); requestSettle(c); }}>Settle</Button>}
               </div>
             )},
           ]}
@@ -136,7 +170,7 @@ export function ShopCustomers() {
 
       <div className="space-y-3 sm:hidden">
         {pagination.pageData.map(c => (
-          <button key={c.id} type="button" onClick={() => setSelected(c)} className="block w-full text-left bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+          <button key={c.id} type="button" onClick={() => setSelected(c)} className="block w-full text-left bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 cursor-pointer">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-semibold shrink-0">{initial(c.name)}</div>
               <div className="min-w-0 flex-1">
@@ -151,6 +185,7 @@ export function ShopCustomers() {
         ))}
       </div>
 
+      {/* Add Customer Modal */}
       <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add customer">
         <div className="space-y-4">
           <Input label="Name" placeholder="e.g. Ramesh Kumar" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} error={formError.name} />
@@ -163,6 +198,7 @@ export function ShopCustomers() {
         </div>
       </Modal>
 
+      {/* Customer Details Modal */}
       <Modal open={!!selected} onClose={() => setSelected(null)} title="Customer details" size="lg">
         {selected && (
           <div className="space-y-5">
@@ -176,7 +212,7 @@ export function ShopCustomers() {
                 {selected.pendingAmount > 0 ? <p className="text-amber-600 dark:text-amber-400 font-semibold tabular-nums text-lg">{formatCurrency(selected.pendingAmount)}</p> : <Badge variant="success">Cleared</Badge>}
               </div>
             </div>
-            {canEdit && selected.pendingAmount > 0 && <Button variant="primary" size="lg" onClick={() => settleDues(selected)} className="w-full">Mark as paid</Button>}
+            {canEdit && selected.pendingAmount > 0 && <Button variant="primary" size="lg" onClick={() => requestSettle(selected)} className="w-full">Clear payment</Button>}
             <div>
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Bills history</p>
               {customerBills.length === 0 ? (
@@ -197,6 +233,38 @@ export function ShopCustomers() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Security Code Modal */}
+      <Modal open={securityOpen} onClose={() => { setSecurityOpen(false); setSettleTarget(null); }} title="Confirm Payment" size="sm">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20">
+            <ShieldCheck size={20} className="text-amber-600 dark:text-amber-400 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">Security verification required</p>
+              <p className="text-xs text-gray-500 mt-0.5">Enter the security code set by the shop owner to clear dues.</p>
+            </div>
+          </div>
+          {settleTarget && (
+            <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+              <p className="text-xs text-gray-500">Clearing dues for</p>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">{settleTarget.name}</p>
+              <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 tabular-nums mt-1">{formatCurrency(settleTarget.pendingAmount)}</p>
+            </div>
+          )}
+          <Input
+            label="Security code"
+            type="password"
+            value={securityInput}
+            onChange={e => { setSecurityInput(e.target.value); setSecurityError(''); }}
+            placeholder="Enter security code"
+            error={securityError}
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" onClick={() => { setSecurityOpen(false); setSettleTarget(null); }}>Cancel</Button>
+            <Button variant="primary" onClick={confirmSettle}>Confirm & settle</Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

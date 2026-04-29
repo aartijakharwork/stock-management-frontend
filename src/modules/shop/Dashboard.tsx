@@ -1,16 +1,19 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { IndianRupee, Receipt, Clock, AlertTriangle, ArrowRight, PackageX } from 'lucide-react';
+import { IndianRupee, Receipt, Clock, AlertTriangle, ArrowRight, PackageX, Share2, CheckCircle2, Phone } from 'lucide-react';
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { StatCard, Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
+import { Button } from '../../components/ui/Button';
+import { Modal } from '../../components/ui/Modal';
 import { bills, customers, inventoryItems } from '../../data/shop-dummy';
 import { formatCurrency } from '../../utils/formatters';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 
 const TODAY = '2026-04-25';
 
@@ -31,10 +34,20 @@ function lastSevenDays(): string[] {
 
 const PIE_COLORS = ['#10b981', '#6366f1', '#f59e0b', '#ef4444', '#06b6d4'];
 
+const CLEARED_TODAY = [
+  { id: 'ct-1', name: 'Sunil Sharma', phone: '9876543211', amount: 1500 },
+  { id: 'ct-2', name: 'Ravi Tiwari', phone: '9876543217', amount: 800 },
+];
+
 export function ShopDashboard() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { addToast } = useToast();
   const isDark = theme === 'dark';
+
+  const [lowStockOpen, setLowStockOpen] = useState(false);
+  const [udhaarOpen, setUdhaarOpen] = useState(false);
+  const [clearedOpen, setClearedOpen] = useState(false);
 
   const tooltipStyle = isDark
     ? { background: '#111827', border: '1px solid #374151', borderRadius: '8px', color: '#fff', fontSize: '12px' }
@@ -46,6 +59,7 @@ export function ShopDashboard() {
   const todaySales = useMemo(() => bills.filter(b => b.date === TODAY).reduce((s, b) => s + b.total, 0), []);
   const billsToday = useMemo(() => bills.filter(b => b.date === TODAY).length, []);
   const pendingUdhaar = useMemo(() => customers.reduce((s, c) => s + c.pendingAmount, 0), []);
+  const pendingCustomers = useMemo(() => customers.filter(c => c.pendingAmount > 0), []);
   const lowStockItems = useMemo(() => inventoryItems.filter(i => i.stock <= 10).sort((a, b) => a.stock - b.stock), []);
 
   const revenueSeries = useMemo(() => {
@@ -70,18 +84,60 @@ export function ShopDashboard() {
     return Array.from(tally.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 6);
   }, []);
 
+  const shareOnWhatsApp = (item: { name: string; stock: number; unit: string }) => {
+    const text = encodeURIComponent(`Low stock alert: ${item.name} — only ${item.stock} ${item.unit}(s) left. Please reorder.`);
+    window.open(`https://wa.me/?text=${text}`, '_blank');
+  };
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{user?.shopName || 'Shop Dashboard'}</h1>
-        <p className="mt-1 text-sm text-gray-500">Here's how your shop is doing today.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{user?.shopName || 'Shop Dashboard'}</h1>
+          <p className="mt-1 text-sm text-gray-500">Here's how your shop is doing today.</p>
+        </div>
+        <Badge variant="success">{formatShortDate(TODAY)}</Badge>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard title="Today's Sales" value={formatCurrency(todaySales)} icon={<IndianRupee size={20} />} />
         <StatCard title="Bills Today" value={String(billsToday)} icon={<Receipt size={20} />} />
-        <StatCard title="Pending Udhaar" value={formatCurrency(pendingUdhaar)} icon={<Clock size={20} />} trend={`${customers.filter(c => c.pendingAmount > 0).length} customers`} trendUp={false} />
-        <StatCard title="Low Stock Items" value={String(lowStockItems.length)} icon={<AlertTriangle size={20} />} trend={lowStockItems.length > 0 ? 'Needs reorder' : 'All good'} trendUp={lowStockItems.length === 0} />
+        <StatCard
+          title="Pending Udhaar"
+          value={formatCurrency(pendingUdhaar)}
+          icon={<Clock size={20} />}
+          trend={`${pendingCustomers.length} customers`}
+          trendUp={false}
+          onClick={() => setUdhaarOpen(true)}
+        />
+        <StatCard
+          title="Low Stock Items"
+          value={String(lowStockItems.length)}
+          icon={<AlertTriangle size={20} />}
+          trend={lowStockItems.length > 0 ? 'Needs reorder' : 'All good'}
+          trendUp={lowStockItems.length === 0}
+          onClick={() => setLowStockOpen(true)}
+        />
+      </div>
+
+      <div
+        onClick={() => setClearedOpen(true)}
+        className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 sm:p-6 cursor-pointer hover:border-gray-300 dark:hover:border-gray-700 transition-colors"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-emerald-50 border border-emerald-100 dark:bg-emerald-500/10 dark:border-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 size={20} />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-gray-500">Cleared Payments Today</p>
+              <p className="text-xl font-bold text-gray-900 dark:text-white tabular-nums">{CLEARED_TODAY.length} customers</p>
+            </div>
+          </div>
+          <span className="text-emerald-600 dark:text-emerald-400 font-semibold tabular-nums">
+            {formatCurrency(CLEARED_TODAY.reduce((s, c) => s + c.amount, 0))}
+          </span>
+        </div>
       </div>
 
       <Card>
@@ -149,10 +205,13 @@ export function ShopDashboard() {
         </Card>
       </div>
 
-      <Card>
+      <div
+        onClick={() => setLowStockOpen(true)}
+        className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 sm:p-6 cursor-pointer hover:border-gray-300 dark:hover:border-gray-700 transition-colors"
+      >
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Low Stock — Reorder Soon</h2>
-          <Link to="/shop/inventory" className="text-sm text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium hover:underline">
+          <Link to="/shop/inventory" onClick={e => e.stopPropagation()} className="text-sm text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium hover:underline">
             View all <ArrowRight size={14} />
           </Link>
         </div>
@@ -171,7 +230,103 @@ export function ShopDashboard() {
             ))}
           </ul>
         )}
-      </Card>
+      </div>
+
+      {/* Low Stock Modal */}
+      <Modal open={lowStockOpen} onClose={() => setLowStockOpen(false)} title="Low Stock Items" size="lg">
+        <div className="space-y-1">
+          {lowStockItems.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-8">All items are well stocked.</p>
+          ) : (
+            <ul className="divide-y divide-gray-200 dark:divide-gray-800">
+              {lowStockItems.map(item => (
+                <li key={item.id} className="flex items-center justify-between gap-3 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-gray-500">{item.category}</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{item.name}</p>
+                    <p className="text-xs text-gray-500">{formatCurrency(item.price)} per {item.unit}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge variant={item.stock <= 5 ? 'danger' : 'warning'}>{item.stock} left</Badge>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={<Share2 size={14} />}
+                      onClick={() => shareOnWhatsApp(item)}
+                    >
+                      WhatsApp
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </Modal>
+
+      {/* Pending Udhaar Modal */}
+      <Modal open={udhaarOpen} onClose={() => setUdhaarOpen(false)} title="Pending Udhaar" size="lg">
+        <div className="space-y-1">
+          {pendingCustomers.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-8">No pending dues.</p>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-200 dark:border-gray-800">
+                <span className="text-sm text-gray-500">{pendingCustomers.length} customers</span>
+                <span className="text-sm font-semibold text-amber-600 dark:text-amber-400 tabular-nums">{formatCurrency(pendingUdhaar)} total</span>
+              </div>
+              <ul className="divide-y divide-gray-200 dark:divide-gray-800">
+                {pendingCustomers.map(c => (
+                  <li key={c.id} className="flex items-center justify-between gap-3 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-semibold text-sm shrink-0">
+                        {c.name.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">{c.name}</p>
+                        <p className="text-xs text-gray-500 flex items-center gap-1"><Phone size={11} /> {c.phone}</p>
+                      </div>
+                    </div>
+                    <span className="font-semibold text-amber-600 dark:text-amber-400 tabular-nums">{formatCurrency(c.pendingAmount)}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      {/* Cleared Payments Today Modal */}
+      <Modal open={clearedOpen} onClose={() => setClearedOpen(false)} title="Cleared Payments Today" size="md">
+        <div className="space-y-1">
+          {CLEARED_TODAY.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-8">No payments cleared today.</p>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-200 dark:border-gray-800">
+                <span className="text-sm text-gray-500">{CLEARED_TODAY.length} customers</span>
+                <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">{formatCurrency(CLEARED_TODAY.reduce((s, c) => s + c.amount, 0))} received</span>
+              </div>
+              <ul className="divide-y divide-gray-200 dark:divide-gray-800">
+                {CLEARED_TODAY.map(c => (
+                  <li key={c.id} className="flex items-center justify-between gap-3 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-semibold text-sm shrink-0">
+                        {c.name.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">{c.name}</p>
+                        <p className="text-xs text-gray-500 flex items-center gap-1"><Phone size={11} /> {c.phone}</p>
+                      </div>
+                    </div>
+                    <Badge variant="success">{formatCurrency(c.amount)}</Badge>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

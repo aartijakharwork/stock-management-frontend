@@ -15,6 +15,8 @@ import { usePermissions } from '../../context/PermissionContext';
 import { usePagination } from '../../hooks/usePagination';
 import type { InventoryItem } from '../../types';
 
+const DEFAULT_CATEGORIES = Array.from(new Set(initialItems.map(i => i.category))).sort();
+
 const emptyItem: Omit<InventoryItem, 'id'> = { name: '', price: 0, stock: 0, category: '', unit: 'piece' };
 
 function StockPill({ stock, unit }: { stock: number; unit: string }) {
@@ -26,11 +28,14 @@ function StockPill({ stock, unit }: { stock: number; unit: string }) {
 
 export function ShopInventory() {
   const [items, setItems] = useState<InventoryItem[]>(initialItems);
+  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<InventoryItem | null>(null);
   const [form, setForm] = useState<Omit<InventoryItem, 'id'>>(emptyItem);
+  const [newCategory, setNewCategory] = useState('');
+  const [addingCategory, setAddingCategory] = useState(false);
   const { addToast } = useToast();
   const { can } = usePermissions();
 
@@ -39,9 +44,14 @@ export function ShopInventory() {
   const canDelete = can('inventory', 'delete');
 
   const categoryOptions = useMemo(() => {
-    const uniq = Array.from(new Set(items.map(i => i.category))).sort();
-    return [{ label: 'All categories', value: '' }, ...uniq.map(c => ({ label: c, value: c }))];
-  }, [items]);
+    const all = Array.from(new Set([...categories, ...items.map(i => i.category)])).sort();
+    return [{ label: 'All categories', value: '' }, ...all.map(c => ({ label: c, value: c }))];
+  }, [items, categories]);
+
+  const categoryFormOptions = useMemo(() => {
+    const all = Array.from(new Set([...categories, ...items.map(i => i.category)])).sort();
+    return [{ label: 'Select category', value: '' }, ...all.map(c => ({ label: c, value: c }))];
+  }, [items, categories]);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -62,8 +72,22 @@ export function ShopInventory() {
     },
   });
 
-  const openAdd = () => { setEditing(null); setForm(emptyItem); setModalOpen(true); };
-  const openEdit = (item: InventoryItem) => { setEditing(item); setForm({ name: item.name, price: item.price, stock: item.stock, category: item.category, unit: item.unit }); setModalOpen(true); };
+  const openAdd = () => { setEditing(null); setForm(emptyItem); setAddingCategory(false); setNewCategory(''); setModalOpen(true); };
+  const openEdit = (item: InventoryItem) => { setEditing(item); setForm({ name: item.name, price: item.price, stock: item.stock, category: item.category, unit: item.unit }); setAddingCategory(false); setNewCategory(''); setModalOpen(true); };
+
+  const handleAddCategory = () => {
+    const trimmed = newCategory.trim();
+    if (!trimmed) return;
+    if (categories.includes(trimmed)) {
+      addToast('warning', 'Category already exists');
+      return;
+    }
+    setCategories(prev => [...prev, trimmed].sort());
+    setForm(f => ({ ...f, category: trimmed }));
+    setNewCategory('');
+    setAddingCategory(false);
+    addToast('success', `Category "${trimmed}" added`);
+  };
 
   const handleSave = () => {
     if (!form.name.trim() || !form.category.trim()) return;
@@ -153,10 +177,43 @@ export function ShopInventory() {
             <Input label="Price (₹)" type="number" value={form.price || ''} onChange={e => setForm({ ...form, price: Number(e.target.value) })} />
             <Input label="Stock" type="number" value={form.stock || ''} onChange={e => setForm({ ...form, stock: Number(e.target.value) })} />
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input label="Category" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} placeholder="e.g. Filters" />
-            <Input label="Unit" value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} placeholder="e.g. piece" />
+
+          {/* Category with inline add */}
+          <div>
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Dropdown label="Category" options={categoryFormOptions} value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} />
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<Plus size={14} />}
+                onClick={() => setAddingCategory(true)}
+                className="shrink-0 mb-px"
+              >
+                Add Category
+              </Button>
+            </div>
+            {addingCategory && (
+              <div className="mt-2 flex items-end gap-2 p-3 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                <div className="flex-1">
+                  <Input
+                    label="New category name"
+                    value={newCategory}
+                    onChange={e => setNewCategory(e.target.value)}
+                    placeholder="e.g. Suspension"
+                  />
+                </div>
+                <div className="flex gap-1 shrink-0 mb-px">
+                  <Button variant="primary" size="sm" onClick={handleAddCategory}>Add</Button>
+                  <Button variant="ghost" size="sm" onClick={() => { setAddingCategory(false); setNewCategory(''); }}>Cancel</Button>
+                </div>
+              </div>
+            )}
           </div>
+
+          <Input label="Unit" value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} placeholder="e.g. piece" />
+
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
             <Button variant="primary" onClick={handleSave}>{editing ? 'Save changes' : 'Add item'}</Button>
