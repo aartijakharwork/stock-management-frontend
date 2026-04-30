@@ -11,6 +11,7 @@ import {
   CreditCard,
   X,
   Store,
+  BarChart3,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -37,12 +38,15 @@ interface NavGroup {
 const navGroups: NavGroup[] = [
   {
     label: 'Overview',
-    items: [{ to: '/shop', icon: LayoutDashboard, label: 'Dashboard', module: 'dashboard' }],
+    items: [
+      { to: '/shop', icon: LayoutDashboard, label: 'Dashboard', module: 'dashboard' },
+      { to: '/shop/reports', icon: BarChart3, label: 'Reports', module: 'dashboard' },
+    ],
   },
   {
     label: 'Operations',
     items: [
-      { to: '/shop/billing', icon: ShoppingCart, label: 'Billing', module: 'billing' },
+      { to: '/shop/billing', icon: ShoppingCart, label: 'New Bill', module: 'billing' },
       { to: '/shop/inventory', icon: Package, label: 'Inventory', module: 'inventory' },
       { to: '/shop/customers', icon: Users, label: 'Customers', module: 'customers' },
       { to: '/shop/bills', icon: FileText, label: 'Bills History', module: 'bills' },

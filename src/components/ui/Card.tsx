@@ -4,12 +4,14 @@ interface CardProps {
   children: ReactNode;
   className?: string;
   padding?: boolean;
+  onClick?: () => void;
 }
 
-export function Card({ children, className = '', padding = true }: CardProps) {
+export function Card({ children, className = '', padding = true, onClick }: CardProps) {
   return (
     <div
-      className={`bg-white border border-gray-200 rounded-xl dark:bg-gray-900 dark:border-gray-800 ${padding ? 'p-5 sm:p-6' : ''} ${className}`}
+      onClick={onClick}
+      className={`bg-white border border-gray-200 rounded-xl dark:bg-gray-900 dark:border-gray-800 ${padding ? 'p-5 sm:p-6' : ''} ${onClick ? 'cursor-pointer hover:border-gray-300 dark:hover:border-gray-700 transition-colors' : ''} ${className}`}
     >
       {children}
     </div>
@@ -30,7 +32,7 @@ export function StatCard({ title, value, icon, trend, trendUp, onClick }: StatCa
   return (
     <div
       onClick={onClick}
-      className={`bg-white border border-gray-200 rounded-xl p-5 sm:p-6 dark:bg-gray-900 dark:border-gray-800 ${onClick ? 'cursor-pointer hover:border-gray-300 dark:hover:border-gray-700' : ''}`}
+      className={`bg-white border border-gray-200 rounded-xl p-5 sm:p-6 dark:bg-gray-900 dark:border-gray-800 transition-colors ${onClick ? 'cursor-pointer hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-sm' : ''}`}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">

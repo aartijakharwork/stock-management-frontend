@@ -1,5 +1,8 @@
 import { useState, useMemo } from 'react';
-import { Plus, Phone, Eye, CircleDollarSign, Users, AlertCircle, ShieldCheck } from 'lucide-react';
+import {
+  Plus, Phone, Eye, CircleDollarSign, Users, AlertCircle,
+  ShieldCheck, Share2, Pencil, MessageSquare,
+} from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { SearchInput } from '../../components/ui/SearchInput';
 import { Table } from '../../components/ui/Table';
@@ -23,13 +26,17 @@ function getSecuritySettings() {
   return { enabled: enabled && code.length > 0, code };
 }
 
+const emptyForm = { name: '', phone: '', address: '' };
+
 export function ShopCustomers() {
   const [customersList, setCustomers] = useState(initialCustomers);
   const [bills, setBills] = useState(initialBills);
   const [search, setSearch] = useState('');
   const [duesFilter, setDuesFilter] = useState<DuesFilter>('');
   const [addOpen, setAddOpen] = useState(false);
-  const [form, setForm] = useState({ name: '', phone: '', address: '' });
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<Customer | null>(null);
+  const [form, setForm] = useState(emptyForm);
   const [formError, setFormError] = useState<{ name?: string; phone?: string }>({});
   const [selected, setSelected] = useState<Customer | null>(null);
   const [securityOpen, setSecurityOpen] = useState(false);
@@ -46,14 +53,16 @@ export function ShopCustomers() {
     const q = search.trim().toLowerCase();
     return customersList.filter(c => {
       const matchesSearch = !q || c.name.toLowerCase().includes(q) || c.phone.includes(q);
-      const matchesDues = !duesFilter || (duesFilter === 'with' && c.pendingAmount > 0) || (duesFilter === 'cleared' && c.pendingAmount === 0);
+      const matchesDues = !duesFilter
+        || (duesFilter === 'with' && c.pendingAmount > 0)
+        || (duesFilter === 'cleared' && c.pendingAmount === 0);
       return matchesSearch && matchesDues;
     });
   }, [customersList, search, duesFilter]);
 
   const pagination = usePagination({
     data: filtered,
-    pageSize: 6,
+    pageSize: 8,
     sortFns: {
       name: (a, b) => a.name.localeCompare(b.name),
       pending: (a, b) => a.pendingAmount - b.pendingAmount,
@@ -62,22 +71,51 @@ export function ShopCustomers() {
 
   const totalPending = customersList.reduce((s, c) => s + c.pendingAmount, 0);
   const dueCount = customersList.filter(c => c.pendingAmount > 0).length;
+  const clearedCount = customersList.filter(c => c.pendingAmount === 0).length;
 
-  const openAdd = () => { setForm({ name: '', phone: '', address: '' }); setFormError({}); setAddOpen(true); };
+  const openAdd = () => { setForm(emptyForm); setFormError({}); setAddOpen(true); };
+  const openEdit = (c: Customer) => {
+    setEditTarget(c);
+    setForm({ name: c.name, phone: c.phone, address: c.address || '' });
+    setFormError({});
+    setEditOpen(true);
+  };
 
-  const handleSave = () => {
+  const validateForm = () => {
     const errs: typeof formError = {};
     if (!form.name.trim()) errs.name = 'Name is required';
     if (!form.phone.trim()) errs.phone = 'Phone is required';
     setFormError(errs);
-    if (Object.keys(errs).length > 0) return;
-    setCustomers(prev => [...prev, { id: generateId(), name: form.name.trim(), phone: form.phone.trim(), address: form.address.trim() || undefined, pendingAmount: 0 }]);
+    return Object.keys(errs).length === 0;
+  };
+
+  const handleSave = () => {
+    if (!validateForm()) return;
+    setCustomers(prev => [...prev, {
+      id: generateId(),
+      name: form.name.trim(),
+      phone: form.phone.trim(),
+      address: form.address.trim() || undefined,
+      pendingAmount: 0,
+    }]);
     setAddOpen(false);
     addToast('success', 'Customer added');
   };
 
+  const handleEditSave = () => {
+    if (!validateForm() || !editTarget) return;
+    setCustomers(prev => prev.map(c =>
+      c.id === editTarget.id
+        ? { ...c, name: form.name.trim(), phone: form.phone.trim(), address: form.address.trim() || undefined }
+        : c
+    ));
+    if (selected?.id === editTarget.id) setSelected(prev => prev ? { ...prev, name: form.name.trim(), phone: form.phone.trim() } : null);
+    setEditOpen(false);
+    addToast('success', 'Customer updated');
+  };
+
   const doSettle = (customer: Customer) => {
-    setCustomers(prev => prev.map(c => (c.id === customer.id ? { ...c, pendingAmount: 0 } : c)));
+    setCustomers(prev => prev.map(c => c.id === customer.id ? { ...c, pendingAmount: 0 } : c));
     setBills(prev => prev.map(b => b.customerId === customer.id && b.isUdhaar && !b.paid ? { ...b, paid: true } : b));
     if (selected?.id === customer.id) setSelected({ ...customer, pendingAmount: 0 });
     addToast('success', 'Dues settled', `${formatCurrency(customer.pendingAmount)} received from ${customer.name}`);
@@ -98,17 +136,29 @@ export function ShopCustomers() {
 
   const confirmSettle = () => {
     const security = getSecuritySettings();
-    if (securityInput !== security.code) {
-      setSecurityError('Invalid security code');
-      return;
-    }
+    if (securityInput !== security.code) { setSecurityError('Invalid security code'); return; }
     if (!settleTarget) return;
     doSettle(settleTarget);
     setSecurityOpen(false);
     setSettleTarget(null);
   };
 
-  const customerBills = useMemo(() => selected ? bills.filter(b => b.customerId === selected.id) : [], [selected, bills]);
+  const sendWhatsAppReminder = (c: Customer) => {
+    const text = encodeURIComponent(
+      `Hi ${c.name}, this is a gentle reminder that you have a pending payment of ${formatCurrency(c.pendingAmount)} at our shop. Kindly clear at your earliest convenience. Thank you!`
+    );
+    window.open(`https://wa.me/91${c.phone}?text=${text}`, '_blank');
+  };
+
+  const customerBills = useMemo(() =>
+    selected ? bills.filter(b => b.customerId === selected.id) : [],
+    [selected, bills]
+  );
+
+  const customerTotalSpent = useMemo(() =>
+    selected ? bills.filter(b => b.customerId === selected.id).reduce((s, b) => s + b.total, 0) : 0,
+    [selected, bills]
+  );
 
   const initial = (name: string) => name.trim().charAt(0).toUpperCase() || '?';
 
@@ -124,34 +174,92 @@ export function ShopCustomers() {
 
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard title="Total Customers" value={customersList.length.toString()} icon={<Users size={18} />} />
-        <StatCard title="Pending Udhaar" value={formatCurrency(totalPending)} icon={<CircleDollarSign size={18} />} />
-        <StatCard title="With Dues" value={dueCount.toString()} icon={<AlertCircle size={18} />} />
+        <StatCard
+          title="Pending Udhaar"
+          value={formatCurrency(totalPending)}
+          icon={<CircleDollarSign size={18} />}
+          trend={`${dueCount} customer${dueCount === 1 ? '' : 's'}`}
+          trendUp={false}
+          onClick={() => setDuesFilter('with')}
+        />
+        <StatCard
+          title="Cleared"
+          value={clearedCount.toString()}
+          icon={<AlertCircle size={18} />}
+          trend={`${Math.round((clearedCount / customersList.length) * 100)}% cleared`}
+          trendUp={true}
+        />
       </div>
 
       <Card>
         <div className="grid gap-3 sm:grid-cols-[1fr_200px]">
           <SearchInput placeholder="Search by name or phone..." value={search} onSearch={setSearch} />
-          <Dropdown options={[{ label: 'All customers', value: '' }, { label: 'With dues', value: 'with' }, { label: 'Cleared', value: 'cleared' }]} value={duesFilter} onChange={e => setDuesFilter(e.target.value as DuesFilter)} />
+          <Dropdown
+            options={[
+              { label: 'All customers', value: '' },
+              { label: `With dues (${dueCount})`, value: 'with' },
+              { label: `Cleared (${clearedCount})`, value: 'cleared' },
+            ]}
+            value={duesFilter}
+            onChange={e => setDuesFilter(e.target.value as DuesFilter)}
+          />
         </div>
       </Card>
 
+      {/* Desktop table */}
       <div className="hidden sm:block">
         <Table
           columns={[
-            { key: 'name', header: 'Customer', sortable: true, render: c => (
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-semibold text-sm shrink-0">{initial(c.name)}</div>
-                <span className="font-medium text-gray-900 dark:text-white">{c.name}</span>
-              </div>
-            )},
-            { key: 'phone', header: 'Phone', render: c => <span className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400"><Phone size={14} /> {c.phone}</span> },
-            { key: 'pending', header: 'Pending', sortable: true, render: c => c.pendingAmount > 0 ? <span className="font-semibold text-amber-600 dark:text-amber-400 tabular-nums">{formatCurrency(c.pendingAmount)}</span> : <Badge variant="success">Cleared</Badge> },
-            { key: 'actions', header: '', className: 'text-right', render: c => (
-              <div className="flex items-center justify-end gap-2">
-                <Button variant="ghost" size="sm" icon={<Eye size={14} />} onClick={e => { e.stopPropagation(); setSelected(c); }}>View</Button>
-                {canEdit && c.pendingAmount > 0 && <Button variant="primary" size="sm" onClick={e => { e.stopPropagation(); requestSettle(c); }}>Settle</Button>}
-              </div>
-            )},
+            {
+              key: 'name',
+              header: 'Customer',
+              sortable: true,
+              render: c => (
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-semibold text-sm shrink-0">
+                    {initial(c.name)}
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-900 dark:text-white">{c.name}</span>
+                    {c.address && <p className="text-xs text-gray-400 truncate max-w-[180px]">{c.address}</p>}
+                  </div>
+                </div>
+              ),
+            },
+            {
+              key: 'phone',
+              header: 'Phone',
+              render: c => (
+                <span className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
+                  <Phone size={13} /> {c.phone}
+                </span>
+              ),
+            },
+            {
+              key: 'pending',
+              header: 'Pending',
+              sortable: true,
+              render: c => c.pendingAmount > 0
+                ? <span className="font-semibold text-amber-600 dark:text-amber-400 tabular-nums">{formatCurrency(c.pendingAmount)}</span>
+                : <Badge variant="success">Cleared</Badge>,
+            },
+            {
+              key: 'actions',
+              header: '',
+              className: 'text-right',
+              render: c => (
+                <div className="flex items-center justify-end gap-1">
+                  <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={e => { e.stopPropagation(); setSelected(c); }}>View</Button>
+                  {canEdit && <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={e => { e.stopPropagation(); openEdit(c); }}>Edit</Button>}
+                  {c.pendingAmount > 0 && (
+                    <Button variant="ghost" size="sm" icon={<Share2 size={13} />} onClick={e => { e.stopPropagation(); sendWhatsAppReminder(c); }}>WA</Button>
+                  )}
+                  {canEdit && c.pendingAmount > 0 && (
+                    <Button variant="primary" size="sm" onClick={e => { e.stopPropagation(); requestSettle(c); }}>Settle</Button>
+                  )}
+                </div>
+              ),
+            },
           ]}
           data={pagination.pageData}
           keyExtractor={c => c.id}
@@ -168,32 +276,59 @@ export function ShopCustomers() {
         />
       </div>
 
+      {/* Mobile cards */}
       <div className="space-y-3 sm:hidden">
         {pagination.pageData.map(c => (
-          <button key={c.id} type="button" onClick={() => setSelected(c)} className="block w-full text-left bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 cursor-pointer">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-semibold shrink-0">{initial(c.name)}</div>
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-gray-900 dark:text-white truncate">{c.name}</p>
-                <p className="text-xs text-gray-500 flex items-center gap-1"><Phone size={11} /> {c.phone}</p>
+          <div key={c.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+            <button type="button" onClick={() => setSelected(c)} className="block w-full text-left">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-semibold shrink-0">
+                  {initial(c.name)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-gray-900 dark:text-white truncate">{c.name}</p>
+                  <p className="text-xs text-gray-500 flex items-center gap-1"><Phone size={11} /> {c.phone}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  {c.pendingAmount > 0
+                    ? <p className="text-amber-600 dark:text-amber-400 font-semibold tabular-nums">{formatCurrency(c.pendingAmount)}</p>
+                    : <Badge variant="success">Cleared</Badge>}
+                </div>
               </div>
-              <div className="text-right shrink-0">
-                {c.pendingAmount > 0 ? <p className="text-amber-600 dark:text-amber-400 font-semibold tabular-nums">{formatCurrency(c.pendingAmount)}</p> : <Badge variant="success">Cleared</Badge>}
+            </button>
+            {(canEdit || c.pendingAmount > 0) && (
+              <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-800 flex gap-2">
+                {canEdit && <Button variant="ghost" size="sm" icon={<Pencil size={12} />} onClick={() => openEdit(c)} className="flex-1">Edit</Button>}
+                {c.pendingAmount > 0 && <Button variant="ghost" size="sm" icon={<Share2 size={12} />} onClick={() => sendWhatsAppReminder(c)} className="flex-1">Remind</Button>}
+                {canEdit && c.pendingAmount > 0 && <Button variant="primary" size="sm" onClick={() => requestSettle(c)} className="flex-1">Settle</Button>}
               </div>
-            </div>
-          </button>
+            )}
+          </div>
         ))}
       </div>
 
       {/* Add Customer Modal */}
       <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add customer">
         <div className="space-y-4">
-          <Input label="Name" placeholder="e.g. Ramesh Kumar" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} error={formError.name} />
-          <Input label="Phone" placeholder="10-digit mobile number" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} error={formError.phone} />
+          <Input label="Name *" placeholder="e.g. Ramesh Kumar" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} error={formError.name} />
+          <Input label="Phone *" placeholder="10-digit mobile number" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} error={formError.phone} />
           <Input label="Address (optional)" placeholder="Shop or home address" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>
             <Button variant="primary" onClick={handleSave}>Save customer</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Customer Modal */}
+      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit customer">
+        <div className="space-y-4">
+          <Input label="Name *" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} error={formError.name} />
+          <Input label="Phone *" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} error={formError.phone} />
+          <Input label="Address" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button variant="primary" onClick={handleEditSave}>Save changes</Button>
           </div>
         </div>
       </Modal>
@@ -203,25 +338,51 @@ export function ShopCustomers() {
         {selected && (
           <div className="space-y-5">
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-semibold text-lg shrink-0">{initial(selected.name)}</div>
+              <div className="w-14 h-14 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-bold text-xl shrink-0">
+                {initial(selected.name)}
+              </div>
               <div className="min-w-0 flex-1">
                 <p className="text-lg font-semibold text-gray-900 dark:text-white">{selected.name}</p>
                 <p className="text-sm text-gray-500 flex items-center gap-1.5"><Phone size={13} /> {selected.phone}</p>
+                {selected.address && <p className="text-xs text-gray-400 mt-1">{selected.address}</p>}
               </div>
-              <div className="text-right">
-                {selected.pendingAmount > 0 ? <p className="text-amber-600 dark:text-amber-400 font-semibold tabular-nums text-lg">{formatCurrency(selected.pendingAmount)}</p> : <Badge variant="success">Cleared</Badge>}
+              <div className="text-right shrink-0">
+                {selected.pendingAmount > 0
+                  ? <p className="text-amber-600 dark:text-amber-400 font-bold tabular-nums text-xl">{formatCurrency(selected.pendingAmount)}</p>
+                  : <Badge variant="success">Cleared</Badge>}
+                <p className="text-xs text-gray-500 mt-1">Total spent: {formatCurrency(customerTotalSpent)}</p>
               </div>
             </div>
-            {canEdit && selected.pendingAmount > 0 && <Button variant="primary" size="lg" onClick={() => requestSettle(selected)} className="w-full">Clear payment</Button>}
+
+            <div className="flex gap-2 flex-wrap">
+              {canEdit && <Button variant="secondary" size="sm" icon={<Pencil size={13} />} onClick={() => { setSelected(null); openEdit(selected); }}>Edit</Button>}
+              {selected.pendingAmount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<Share2 size={13} />}
+                  onClick={() => sendWhatsAppReminder(selected)}
+                >
+                  WhatsApp Reminder
+                </Button>
+              )}
+              {canEdit && selected.pendingAmount > 0 && (
+                <Button variant="primary" size="sm" onClick={() => { requestSettle(selected); setSelected(null); }}>Clear payment</Button>
+              )}
+            </div>
+
             <div>
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Bills history</p>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Bills history ({customerBills.length})</p>
               {customerBills.length === 0 ? (
-                <Card><p className="text-center text-sm text-gray-500 py-4">No bills for this customer yet.</p></Card>
+                <Card><p className="text-center text-sm text-gray-500 py-4">No bills yet.</p></Card>
               ) : (
                 <ul className="divide-y divide-gray-200 dark:divide-gray-800 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
                   {customerBills.map(b => (
                     <li key={b.id} className="flex items-center justify-between gap-3 px-4 py-3">
-                      <div><p className="font-mono text-xs text-gray-500">{b.id}</p><p className="text-xs text-gray-500">{formatDate(b.date)} · {b.items.length} item{b.items.length === 1 ? '' : 's'}</p></div>
+                      <div>
+                        <p className="font-mono text-xs text-gray-500">{b.id}</p>
+                        <p className="text-xs text-gray-500">{formatDate(b.date)} · {b.items.length} item{b.items.length === 1 ? '' : 's'}</p>
+                      </div>
                       <div className="text-right">
                         <p className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">{formatCurrency(b.total)}</p>
                         {b.isUdhaar && !b.paid ? <Badge variant="warning">Udhaar</Badge> : <Badge variant="success">Paid</Badge>}
@@ -242,7 +403,7 @@ export function ShopCustomers() {
             <ShieldCheck size={20} className="text-amber-600 dark:text-amber-400 shrink-0" />
             <div>
               <p className="text-sm font-medium text-gray-900 dark:text-white">Security verification required</p>
-              <p className="text-xs text-gray-500 mt-0.5">Enter the security code set by the shop owner to clear dues.</p>
+              <p className="text-xs text-gray-500 mt-0.5">Enter the security code to clear dues.</p>
             </div>
           </div>
           {settleTarget && (

@@ -6,6 +6,7 @@ html, body {
   background: #f9fafb;
   color: #111827;
   transition: background-color 200ms ease, color 200ms ease;
+  overflow-x: hidden;
 }
 
 html.dark, html.dark body {
@@ -22,6 +23,7 @@ body {
 
 #root {
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 /* Scrollbar */
@@ -39,18 +41,29 @@ html.dark * {
 html.dark *::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); }
 html.dark *::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.12); }
 
+/* Cursor pointer on all interactive elements */
+button:not(:disabled),
+a,
+[role="tab"],
+[role="button"],
+label[for],
+label.cursor-pointer,
+select:not(:disabled) {
+  cursor: pointer;
+}
+
 /* Focus ring — green */
 input:focus, select:focus, textarea:focus {
   outline: none;
 }
 
-/* Toast slide in */
-@keyframes slideIn {
-  from { opacity: 0; transform: translateX(16px); }
-  to { opacity: 1; transform: translateX(0); }
+/* Toast slide in from top */
+@keyframes slideInDown {
+  from { opacity: 0; transform: translateY(-14px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)     scale(1);    }
 }
 .animate-slide-in {
-  animation: slideIn 0.25s ease-out both;
+  animation: slideInDown 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @media print {

@@ -31,7 +31,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   const initial = user?.name?.charAt(0).toUpperCase() || '?';
 
   return (
-    <header className="sticky top-0 z-30 h-16 border-b border-gray-200 bg-white/95 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-950/95">
+    <header className="sticky top-0 z-40 h-16 border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950 shadow-sm">
       <div className="h-full px-4 sm:px-6 flex items-center gap-3">
         <button
           onClick={onMenuClick}

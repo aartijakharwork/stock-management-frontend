@@ -20,6 +20,7 @@ import { ShopStaff } from './modules/shop/Staff';
 import { ShopRoles } from './modules/shop/Roles';
 import { ShopSettings } from './modules/shop/Settings';
 import { ShopSubscription } from './modules/shop/Subscription';
+import { ShopReports } from './modules/shop/Reports';
 
 import type { ReactNode } from 'react';
 
@@ -54,6 +55,7 @@ function AppRoutes() {
         <Route path="roles" element={<ShopRoles />} />
         <Route path="settings" element={<ShopSettings />} />
         <Route path="subscription" element={<ShopSubscription />} />
+        <Route path="reports" element={<ShopReports />} />
       </Route>
 
       {/* Default redirect */}

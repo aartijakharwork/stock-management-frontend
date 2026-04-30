@@ -26,7 +26,7 @@ export const inventoryItems: InventoryItem[] = [
 ];
 
 export const customers: Customer[] = [
-  { id: '1', name: 'Rajesh Kumar', phone: '9876543210', pendingAmount: 2500 },
+  { id: '1', name: 'Rajesh Kumar', phone: '7877965097', pendingAmount: 2500 },
   { id: '2', name: 'Sunil Sharma', phone: '9876543211', pendingAmount: 0 },
   { id: '3', name: 'Amit Patel', phone: '9876543212', pendingAmount: 1200 },
   { id: '4', name: 'Vikram Singh', phone: '9876543213', pendingAmount: 4800 },

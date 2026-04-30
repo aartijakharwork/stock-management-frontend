@@ -1,4 +1,5 @@
 export type UserRole = 'admin' | 'shopkeeper' | 'staff';
+export type PaymentMethod = 'cash' | 'card' | 'upi';
 
 export interface AuthUser {
   id: string;
@@ -67,8 +68,35 @@ export interface Bill {
   customerName: string;
   customerId?: string;
   items: CartItem[];
+  subtotal?: number;
+  discount?: number;
   total: number;
+  paymentMethod?: PaymentMethod;
   isUdhaar: boolean;
+  paid: boolean;
+  note?: string;
+}
+
+export interface Expense {
+  id: string;
+  date: string;
+  description: string;
+  amount: number;
+  category: string;
+}
+
+export interface PurchaseItem {
+  name: string;
+  quantity: number;
+  price: number;
+}
+
+export interface Purchase {
+  id: string;
+  date: string;
+  supplier: string;
+  items: PurchaseItem[];
+  total: number;
   paid: boolean;
 }
 
