@@ -2,18 +2,23 @@ import { useMemo, useState } from 'react';
 import {
   TrendingUp, TrendingDown, IndianRupee, Clock, Users,
   Banknote, Smartphone, CreditCard as CardIcon, AlertTriangle,
+  PieChart as PieChartIcon, FileText, BookOpen, Receipt as ReceiptIcon,
+  Snowflake, Sun,
 } from 'lucide-react';
 import {
-  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend,
-  Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line,
+  Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, ComposedChart,
 } from 'recharts';
 import { StatCard, Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
+import { Toggle } from '../../components/ui/Toggle';
+import { JargonHint } from '../../components/ui/JargonHint';
 import { ExportMenu } from '../../components/ui/ExportMenu';
 import { bills, customers, inventoryItems, expenses } from '../../data/shop-dummy';
 import { formatCurrency, formatDate, formatInvoiceNo } from '../../utils/formatters';
 import { useTheme } from '../../context/ThemeContext';
 import type { ExportColumn } from '../../utils/exporters';
+import type { Bill } from '../../types';
 
 type Period = '7d' | '30d' | 'all';
 
@@ -53,6 +58,7 @@ const PERIOD_OPTIONS: { value: Period; label: string }[] = [
 
 export function ShopReports() {
   const [period, setPeriod] = useState<Period>('7d');
+  const [compareMode, setCompareMode] = useState(false);
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
@@ -149,6 +155,131 @@ export function ShopReports() {
   }, [filteredBills]);
 
   const avgBillValue = filteredBills.length > 0 ? Math.round(totalRevenue / filteredBills.length) : 0;
+
+  // P&L — COGS uses item cost prices when available
+  const cogs = useMemo(() => {
+    let s = 0;
+    for (const b of filteredBills) {
+      for (const it of b.items) {
+        const inv = inventoryItems.find(i => i.id === it.id);
+        const cost = inv?.costPrice ?? Math.round(it.price * 0.7); // fallback 70% if cost not set
+        s += cost * it.quantity;
+      }
+    }
+    return s;
+  }, [filteredBills]);
+  const grossProfit = totalRevenue - cogs;
+  const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+  const netProfitWithCogs = grossProfit - totalExpenses;
+
+  // Day book — daily cash flow
+  const dayBook = useMemo(() => {
+    const dayMap = new Map<string, { date: string; cashIn: number; cashOut: number; bills: number }>();
+    for (const b of filteredBills.filter(b => b.paid)) {
+      const d = b.date.slice(0, 10);
+      const cur = dayMap.get(d) || { date: d, cashIn: 0, cashOut: 0, bills: 0 };
+      cur.cashIn += b.total;
+      cur.bills += 1;
+      dayMap.set(d, cur);
+    }
+    for (const e of filteredExpenses) {
+      const cur = dayMap.get(e.date) || { date: e.date, cashIn: 0, cashOut: 0, bills: 0 };
+      cur.cashOut += e.amount;
+      dayMap.set(e.date, cur);
+    }
+    return Array.from(dayMap.values()).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 14);
+  }, [filteredBills, filteredExpenses]);
+
+  // GST summary — output GST per month from bills (assuming 18% inclusive)
+  const gstSummary = useMemo(() => {
+    const byMonth = new Map<string, { month: string; revenue: number; gst: number; cgst: number; sgst: number; bills: number }>();
+    for (const b of filteredBills) {
+      const m = b.date.slice(0, 7);
+      const cur = byMonth.get(m) || { month: m, revenue: 0, gst: 0, cgst: 0, sgst: 0, bills: 0 };
+      const taxable = b.total / 1.18;
+      const gst = b.total - taxable;
+      cur.revenue += b.total;
+      cur.gst += gst;
+      cur.cgst += gst / 2;
+      cur.sgst += gst / 2;
+      cur.bills += 1;
+      byMonth.set(m, cur);
+    }
+    return Array.from(byMonth.values()).sort((a, b) => b.month.localeCompare(a.month));
+  }, [filteredBills]);
+
+  // Slow-moving inventory: items not sold in last 30/60/90 days
+  const slowMoving = useMemo(() => {
+    const lastSold = new Map<string, string>();
+    for (const b of bills) {
+      for (const it of b.items) {
+        const prev = lastSold.get(it.id);
+        if (!prev || b.date > prev) lastSold.set(it.id, b.date);
+      }
+    }
+    const today = TODAY.getTime();
+    const buckets: { days: number; items: typeof inventoryItems }[] = [
+      { days: 30, items: [] },
+      { days: 60, items: [] },
+      { days: 90, items: [] },
+    ];
+    for (const item of inventoryItems) {
+      const lastIso = lastSold.get(item.id);
+      const lastTs = lastIso ? new Date(lastIso).getTime() : 0;
+      const daysSince = lastTs ? Math.floor((today - lastTs) / 86_400_000) : 999;
+      for (const b of buckets) if (daysSince > b.days) b.items.push(item);
+    }
+    return { buckets, lastSold };
+  }, []);
+
+  // Hourly heatmap — synthesize plausible hourly distribution
+  const hourlyHeatmap = useMemo(() => {
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const grid: { day: string; hour: number; bills: number }[] = [];
+    for (const day of days) {
+      for (let h = 8; h <= 21; h++) {
+        // Simulate: peaks 11-13 and 17-19; weekend slightly lower
+        let base = 0;
+        if (h >= 11 && h <= 13) base = 6;
+        else if (h >= 17 && h <= 19) base = 7;
+        else if (h >= 9 && h <= 20) base = 3;
+        const dayMul = day === 'Sun' ? 0.4 : day === 'Sat' ? 0.85 : 1;
+        const noise = Math.floor(Math.random() * 3);
+        grid.push({ day, hour: h, bills: Math.round(base * dayMul) + noise });
+      }
+    }
+    return { days, hours: Array.from({ length: 14 }, (_, i) => 8 + i), grid };
+  }, []);
+
+  // Comparison with previous period
+  const comparisonSeries = useMemo(() => {
+    if (!compareMode || !startDate) return null;
+    const range = TODAY.getTime() - startDate.getTime();
+    const prevEnd = new Date(startDate.getTime());
+    const prevStart = new Date(startDate.getTime() - range);
+    const prevBills = bills.filter(b => {
+      const t = new Date(b.date).getTime();
+      return t >= prevStart.getTime() && t < prevEnd.getTime();
+    });
+    const map = new Map<string, number>();
+    for (const b of prevBills) {
+      map.set(b.date, (map.get(b.date) ?? 0) + b.total);
+    }
+    const span = Math.min(days, 15);
+    const out: { label: string; prev: number }[] = [];
+    for (let i = span - 1; i >= 0; i--) {
+      const d = new Date(prevEnd);
+      d.setDate(prevEnd.getDate() - 1 - i);
+      const iso = d.toISOString().slice(0, 10);
+      out.push({ label: formatShortDate(iso), prev: map.get(iso) ?? 0 });
+    }
+    return { data: out, total: prevBills.reduce((s, b) => s + b.total, 0) };
+  }, [compareMode, startDate, days]);
+
+  const revenueSeriesWithCompare = useMemo(() => {
+    if (!compareMode || !comparisonSeries) return revenueSeries;
+    return revenueSeries.map((row, idx) => ({ ...row, prev: comparisonSeries.data[idx]?.prev ?? 0 }));
+  }, [revenueSeries, comparisonSeries, compareMode]);
 
   const periodLabel = PERIOD_OPTIONS.find(o => o.value === period)?.label ?? '';
 
@@ -340,16 +471,22 @@ export function ShopReports() {
 
       {/* Revenue Trend Chart */}
       <Card className="overflow-hidden">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <div>
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Daily Revenue</h2>
-            <p className="text-xs text-gray-500">{PERIOD_OPTIONS.find(o => o.value === period)?.label}</p>
+            <p className="text-xs text-gray-500">{PERIOD_OPTIONS.find(o => o.value === period)?.label}{compareMode && comparisonSeries ? ` · vs prev ${formatCurrency(comparisonSeries.total)}` : ''}</p>
           </div>
-          <Badge variant="success">{formatCurrency(totalRevenue)} total</Badge>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-xs text-gray-500">
+              <Toggle checked={compareMode} onChange={setCompareMode} />
+              Compare to previous period
+            </label>
+            <Badge variant="success">{formatCurrency(totalRevenue)} total</Badge>
+          </div>
         </div>
         <div className="h-[260px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={revenueSeries} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <ComposedChart data={revenueSeriesWithCompare} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="reportRevFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="rgba(16,185,129,0.3)" />
@@ -359,11 +496,232 @@ export function ShopReports() {
               <CartesianGrid stroke={gridColor} vertical={false} />
               <XAxis dataKey="label" stroke={axisColor} tick={{ fill: axisColor, fontSize: 11 }} tickLine={false} />
               <YAxis stroke={axisColor} tick={{ fill: axisColor, fontSize: 11 }} tickLine={false} width={52} tickFormatter={v => `₹${v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v}`} />
-              <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [name === 'revenue' ? formatCurrency(Number(v)) : v, name === 'revenue' ? 'Revenue' : 'Bills']} />
-              <Area type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2.5} fill="url(#reportRevFill)" dot={{ fill: '#10b981', r: 3 }} />
-            </AreaChart>
+              <Tooltip contentStyle={tooltipStyle} formatter={(v: number | string, name) => [formatCurrency(Number(v)), name === 'revenue' ? 'This period' : 'Previous']} />
+              <Area type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2.5} fill="url(#reportRevFill)" dot={{ fill: '#10b981', r: 3 }} name="revenue" />
+              {compareMode && (
+                <Line type="monotone" dataKey="prev" stroke="#9ca3af" strokeWidth={1.5} strokeDasharray="4 3" dot={false} name="prev" />
+              )}
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
+      </Card>
+
+      {/* Profit & Loss view */}
+      <Card>
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <PieChartIcon size={18} className="text-emerald-600 dark:text-emerald-400" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Profit & Loss</h2>
+            <JargonHint term="cogs" />
+          </div>
+          <span className="text-xs text-gray-500">{periodLabel}</span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30">
+            <p className="text-[11px] uppercase font-semibold text-emerald-700 dark:text-emerald-400">Revenue</p>
+            <p className="text-base font-bold tabular-nums text-emerald-700 dark:text-emerald-400">{formatCurrency(totalRevenue)}</p>
+          </div>
+          <div className="p-3 rounded-lg bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/30">
+            <p className="text-[11px] uppercase font-semibold text-orange-700 dark:text-orange-400">− COGS</p>
+            <p className="text-base font-bold tabular-nums text-orange-700 dark:text-orange-400">{formatCurrency(cogs)}</p>
+          </div>
+          <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30">
+            <p className="text-[11px] uppercase font-semibold text-blue-700 dark:text-blue-400">= Gross Profit</p>
+            <p className="text-base font-bold tabular-nums text-blue-700 dark:text-blue-400">{formatCurrency(grossProfit)}</p>
+            <p className="text-[11px] text-blue-700/70 dark:text-blue-300/70">Margin {grossMargin.toFixed(1)}%</p>
+          </div>
+          <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30">
+            <p className="text-[11px] uppercase font-semibold text-red-700 dark:text-red-400">− Expenses</p>
+            <p className="text-base font-bold tabular-nums text-red-700 dark:text-red-400">{formatCurrency(totalExpenses)}</p>
+          </div>
+          <div className={`p-3 rounded-lg border ${netProfitWithCogs >= 0 ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30' : 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30'}`}>
+            <p className={`text-[11px] uppercase font-semibold ${netProfitWithCogs >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>= Net Profit</p>
+            <p className={`text-base font-bold tabular-nums ${netProfitWithCogs >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>{formatCurrency(netProfitWithCogs)}</p>
+          </div>
+        </div>
+        <p className="text-[11px] text-gray-400 mt-3">
+          COGS uses item cost prices when available (auto-fills to 70% of sell price for items missing cost data).
+        </p>
+      </Card>
+
+      {/* Day Book / Cash Book */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <BookOpen size={18} className="text-purple-600 dark:text-purple-400" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Day Book / Cash Book</h2>
+          </div>
+          <span className="text-xs text-gray-500">Last 14 active days</span>
+        </div>
+        {dayBook.length === 0 ? (
+          <p className="text-center text-sm text-gray-500 py-6">No transactions in this period.</p>
+        ) : (
+          <div className="overflow-x-auto -mx-1">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="text-[11px] uppercase text-gray-500 text-left border-b border-gray-200 dark:border-gray-800">
+                  <th className="py-2 pr-3">Date</th>
+                  <th className="py-2 px-3 text-right">Bills</th>
+                  <th className="py-2 px-3 text-right">Cash in</th>
+                  <th className="py-2 px-3 text-right">Cash out</th>
+                  <th className="py-2 pl-3 text-right">Net flow</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dayBook.map(d => {
+                  const net = d.cashIn - d.cashOut;
+                  return (
+                    <tr key={d.date} className="border-b border-gray-100 dark:border-gray-800/50">
+                      <td className="py-2 pr-3 font-medium">{formatDate(d.date)}</td>
+                      <td className="py-2 px-3 text-right tabular-nums">{d.bills}</td>
+                      <td className="py-2 px-3 text-right text-emerald-600 dark:text-emerald-400 tabular-nums">+{formatCurrency(d.cashIn)}</td>
+                      <td className="py-2 px-3 text-right text-red-600 dark:text-red-400 tabular-nums">{d.cashOut > 0 ? `−${formatCurrency(d.cashOut)}` : '—'}</td>
+                      <td className={`py-2 pl-3 text-right font-semibold tabular-nums ${net >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>{net >= 0 ? '+' : ''}{formatCurrency(net)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* GST summary */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <FileText size={18} className="text-amber-600 dark:text-amber-400" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">GST summary</h2>
+          </div>
+          <span className="text-xs text-gray-500">Output GST · per month</span>
+        </div>
+        {gstSummary.length === 0 ? (
+          <p className="text-center text-sm text-gray-500 py-6">No GST data for this period.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="text-[11px] uppercase text-gray-500 text-left border-b border-gray-200 dark:border-gray-800">
+                  <th className="py-2 pr-3">Month</th>
+                  <th className="py-2 px-3 text-right">Bills</th>
+                  <th className="py-2 px-3 text-right">Revenue (incl)</th>
+                  <th className="py-2 px-3 text-right">CGST</th>
+                  <th className="py-2 px-3 text-right">SGST</th>
+                  <th className="py-2 pl-3 text-right">Output GST</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gstSummary.map(m => (
+                  <tr key={m.month} className="border-b border-gray-100 dark:border-gray-800/50">
+                    <td className="py-2 pr-3 font-medium">{m.month}</td>
+                    <td className="py-2 px-3 text-right tabular-nums">{m.bills}</td>
+                    <td className="py-2 px-3 text-right tabular-nums">{formatCurrency(m.revenue)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums">{formatCurrency(m.cgst)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums">{formatCurrency(m.sgst)}</td>
+                    <td className="py-2 pl-3 text-right font-semibold tabular-nums text-amber-700 dark:text-amber-400">{formatCurrency(m.gst)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="text-[11px] text-gray-400 mt-3">
+          Computed from total bill values at 18% inclusive GST. For accurate GSTR-1, use HSN-wise breakdown via your accountant.
+        </p>
+      </Card>
+
+      {/* Slow-moving inventory */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Snowflake size={18} className="text-blue-600 dark:text-blue-400" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Slow-moving inventory</h2>
+          </div>
+          <span className="text-xs text-gray-500">No sales in 30/60/90 days</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {slowMoving.buckets.map(b => (
+            <div key={b.days} className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-500">No sales in {b.days}+ days</p>
+                <Badge variant={b.days >= 90 ? 'danger' : b.days >= 60 ? 'warning' : 'info'}>{b.items.length}</Badge>
+              </div>
+              <ul className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+                {b.items.slice(0, 8).map(it => {
+                  const last = slowMoving.lastSold.get(it.id);
+                  return (
+                    <li key={it.id} className="flex items-center justify-between text-xs">
+                      <span className="truncate text-gray-700 dark:text-gray-300">{it.name}</span>
+                      <span className="text-gray-400 ml-2 shrink-0">{last ? formatDate(last) : 'never'}</span>
+                    </li>
+                  );
+                })}
+                {b.items.length > 8 && <li className="text-[10px] text-gray-400">+{b.items.length - 8} more</li>}
+                {b.items.length === 0 && <li className="text-[11px] text-emerald-600 dark:text-emerald-400">All items selling well.</li>}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Hourly heatmap */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Sun size={18} className="text-amber-600 dark:text-amber-400" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Hourly sales heatmap</h2>
+          </div>
+          <span className="text-xs text-gray-500">Bills per hour · darker = busier</span>
+        </div>
+        <div className="overflow-x-auto">
+          <div className="inline-block min-w-full">
+            <div className="grid" style={{ gridTemplateColumns: `64px repeat(${hourlyHeatmap.hours.length}, 1fr)` }}>
+              <div />
+              {hourlyHeatmap.hours.map(h => (
+                <div key={h} className="text-[10px] text-gray-400 text-center py-1">{h}</div>
+              ))}
+              {hourlyHeatmap.days.map(day => (
+                <FragmentRow key={day} day={day} hours={hourlyHeatmap.hours} grid={hourlyHeatmap.grid} />
+              ))}
+            </div>
+            <div className="flex items-center gap-2 mt-3 text-[10px] text-gray-500">
+              <span>Less</span>
+              {[0, 1, 3, 5, 8, 10].map(intensity => (
+                <span key={intensity} className="w-4 h-4 rounded" style={{ backgroundColor: heatColor(intensity) }} />
+              ))}
+              <span>More</span>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Receipt history quick stats — anchor for future deep dive */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <ReceiptIcon size={18} className="text-purple-600 dark:text-purple-400" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Bill activity log</h2>
+          </div>
+          <span className="text-xs text-gray-500">Last 8 transactions</span>
+        </div>
+        <ul className="divide-y divide-gray-200 dark:divide-gray-800">
+          {filteredBills.slice(0, 8).map((b: Bill) => (
+            <li key={b.id} className="flex items-center gap-3 py-2.5">
+              <div className="w-8 h-8 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                <ReceiptIcon size={14} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{formatInvoiceNo(b.id, b.date)} · {b.customerName}</p>
+                <p className="text-xs text-gray-500">{formatDate(b.date)} · {b.items.length} item{b.items.length === 1 ? '' : 's'}{b.createdBy ? ` · by ${b.createdBy}` : ''}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-sm font-semibold tabular-nums">{formatCurrency(b.total)}</p>
+                <Badge variant={b.paid ? 'success' : 'warning'}>{b.paid ? 'Paid' : 'Udhaar'}</Badge>
+              </div>
+            </li>
+          ))}
+        </ul>
       </Card>
 
       {/* Charts Row */}
@@ -462,6 +820,9 @@ export function ShopReports() {
         )}
       </Card>
 
+      {/* spacer */}
+      <div />
+
       {/* Top Customers + Expenses */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 min-w-0">
         {/* Top Customers */}
@@ -530,5 +891,40 @@ export function ShopReports() {
         </Card>
       </div>
     </div>
+  );
+}
+
+function heatColor(intensity: number) {
+  // 0..10+ → light to dark green
+  const cap = Math.min(intensity, 10);
+  const alpha = 0.07 + (cap / 10) * 0.85;
+  return `rgba(16, 185, 129, ${alpha.toFixed(2)})`;
+}
+
+interface FragmentRowProps {
+  day: string;
+  hours: number[];
+  grid: { day: string; hour: number; bills: number }[];
+}
+
+function FragmentRow({ day, hours, grid }: FragmentRowProps) {
+  return (
+    <>
+      <div className="text-[11px] font-medium text-gray-500 px-2 py-1 flex items-center">{day}</div>
+      {hours.map(h => {
+        const cell = grid.find(g => g.day === day && g.hour === h);
+        const bills = cell?.bills ?? 0;
+        return (
+          <div
+            key={`${day}-${h}`}
+            className="m-0.5 rounded h-7 flex items-center justify-center text-[10px] font-medium text-gray-700 dark:text-gray-200"
+            style={{ backgroundColor: heatColor(bills) }}
+            title={`${day} ${h}:00 — ${bills} bills`}
+          >
+            {bills > 0 ? bills : ''}
+          </div>
+        );
+      })}
+    </>
   );
 }

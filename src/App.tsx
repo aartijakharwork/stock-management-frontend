@@ -21,6 +21,10 @@ import { ShopRoles } from './modules/shop/Roles';
 import { ShopSettings } from './modules/shop/Settings';
 import { ShopSubscription } from './modules/shop/Subscription';
 import { ShopReports } from './modules/shop/Reports';
+import { ShopExpenses } from './modules/shop/Expenses';
+import { ShopSuppliers } from './modules/shop/Suppliers';
+import { ShopCustomerLedger } from './modules/shop/CustomerLedger';
+import { CommandPalette } from './components/ui/CommandPalette';
 
 import type { ReactNode } from 'react';
 
@@ -50,7 +54,10 @@ function AppRoutes() {
         <Route path="inventory" element={<ShopInventory />} />
         <Route path="billing" element={<ShopBilling />} />
         <Route path="customers" element={<ShopCustomers />} />
+        <Route path="customers/:id" element={<ShopCustomerLedger />} />
         <Route path="bills" element={<ShopBillsHistory />} />
+        <Route path="expenses" element={<ShopExpenses />} />
+        <Route path="suppliers" element={<ShopSuppliers />} />
         <Route path="staff" element={<ShopStaff />} />
         <Route path="roles" element={<ShopRoles />} />
         <Route path="settings" element={<ShopSettings />} />
@@ -72,6 +79,7 @@ export default function App() {
           <ToastProvider>
             <BrowserRouter>
               <AppRoutes />
+              <CommandPalette />
               <ToastContainer />
             </BrowserRouter>
           </ToastProvider>

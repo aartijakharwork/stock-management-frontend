@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo } from 'react';
 import {
   Plus, Phone, Eye, CircleDollarSign, Users, AlertCircle,
-  ShieldCheck, Share2, Pencil,
+  ShieldCheck, Share2, Pencil, BookOpen, AlertTriangle,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
 import { SearchInput } from '../../components/ui/SearchInput';
 import { Table } from '../../components/ui/Table';
@@ -20,10 +21,18 @@ import { useToast } from '../../context/ToastContext';
 import { usePermissions } from '../../context/PermissionContext';
 import { usePagination } from '../../hooks/usePagination';
 import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
-import type { Bill, Customer } from '../../types';
+import { customerAging, AGING_TONES, customerHealth, HEALTH_TONES } from '../../utils/customerAging';
+import type { AgingBucket } from '../../utils/customerAging';
+import type { Bill, Customer, CustomerTag } from '../../types';
 import type { ExportColumn } from '../../utils/exporters';
 
-type DuesFilter = '' | 'with' | 'cleared';
+type DuesFilter = '' | 'with' | 'cleared' | AgingBucket;
+
+const TAG_TONES: Record<CustomerTag, { bg: string; text: string }> = {
+  wholesale: { bg: 'bg-purple-100 dark:bg-purple-500/20', text: 'text-purple-700 dark:text-purple-400' },
+  retail:    { bg: 'bg-blue-100 dark:bg-blue-500/20',     text: 'text-blue-700 dark:text-blue-400' },
+  vip:       { bg: 'bg-amber-100 dark:bg-amber-500/20',   text: 'text-amber-700 dark:text-amber-400' },
+};
 
 function getSecuritySettings() {
   const enabled = localStorage.getItem('shopmanager.security.enabled') === 'true';
@@ -31,7 +40,21 @@ function getSecuritySettings() {
   return { enabled: enabled && code.length > 0, code };
 }
 
-const emptyForm = { name: '', phone: '', address: '' };
+interface CustomerFormState {
+  name: string;
+  phone: string;
+  address: string;
+  gstin: string;
+  creditLimit: string;
+  area: string;
+  pincode: string;
+  email: string;
+  tags: CustomerTag[];
+}
+
+const emptyForm: CustomerFormState = {
+  name: '', phone: '', address: '', gstin: '', creditLimit: '', area: '', pincode: '', email: '', tags: [],
+};
 
 function lastPaymentMap(bills: Bill[]): Map<string, string> {
   const map = new Map<string, string>();
@@ -50,10 +73,11 @@ export function ShopCustomers() {
   const [bills, setBills] = useState(initialBills);
   const [search, setSearch] = useState('');
   const [duesFilter, setDuesFilter] = useState<DuesFilter>('');
+  const [tagFilter, setTagFilter] = useState<CustomerTag | ''>('');
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Customer | null>(null);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState<CustomerFormState>(emptyForm);
   const [formError, setFormError] = useState<{ name?: string; phone?: string }>({});
   const [selected, setSelected] = useState<Customer | null>(null);
   const [securityOpen, setSecurityOpen] = useState(false);
@@ -64,6 +88,7 @@ export function ShopCustomers() {
   const { addToast } = useToast();
   const { can } = usePermissions();
   const { track } = useRecentlyViewed();
+  const navigate = useNavigate();
 
   const openDetail = (c: Customer) => {
     setSelected(c);
@@ -74,7 +99,7 @@ export function ShopCustomers() {
       sublabel: c.pendingAmount > 0
         ? `Udhaar ${formatCurrency(c.pendingAmount)}`
         : 'All cleared',
-      to: '/shop/customers',
+      to: `/shop/customers/${c.id}`,
     });
   };
 
@@ -86,16 +111,29 @@ export function ShopCustomers() {
   const canAdd = can('customers', 'add');
   const canEdit = can('customers', 'edit');
 
+  const agingMap = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof customerAging>>();
+    customersList.forEach(c => m.set(c.id, customerAging(c, bills)));
+    return m;
+  }, [customersList, bills]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return customersList.filter(c => {
-      const matchesSearch = !q || c.name.toLowerCase().includes(q) || c.phone.includes(q);
+      const matchesSearch = !q
+        || c.name.toLowerCase().includes(q)
+        || c.phone.includes(q)
+        || (c.gstin?.toLowerCase().includes(q) ?? false)
+        || (c.area?.toLowerCase().includes(q) ?? false);
+      const aging = agingMap.get(c.id);
       const matchesDues = !duesFilter
         || (duesFilter === 'with' && c.pendingAmount > 0)
-        || (duesFilter === 'cleared' && c.pendingAmount === 0);
-      return matchesSearch && matchesDues;
+        || (duesFilter === 'cleared' && c.pendingAmount === 0)
+        || (aging && aging.bucket === duesFilter);
+      const matchesTag = !tagFilter || (c.tags?.includes(tagFilter) ?? false);
+      return matchesSearch && matchesDues && matchesTag;
     });
-  }, [customersList, search, duesFilter]);
+  }, [customersList, search, duesFilter, tagFilter, agingMap]);
 
   const pagination = usePagination({
     data: filtered,
@@ -110,13 +148,34 @@ export function ShopCustomers() {
   const dueCount = customersList.filter(c => c.pendingAmount > 0).length;
   const clearedCount = customersList.filter(c => c.pendingAmount === 0).length;
 
+  const agingTotals = useMemo(() => {
+    const totals: Record<AgingBucket, { count: number; amount: number }> = {
+      '0-30':  { count: 0, amount: 0 },
+      '31-60': { count: 0, amount: 0 },
+      '61-90': { count: 0, amount: 0 },
+      '90+':   { count: 0, amount: 0 },
+    };
+    customersList.forEach(c => {
+      const a = agingMap.get(c.id);
+      if (a && c.pendingAmount > 0) {
+        totals[a.bucket].count += 1;
+        totals[a.bucket].amount += c.pendingAmount;
+      }
+    });
+    return totals;
+  }, [customersList, agingMap]);
+
   const lastPayments = useMemo(() => lastPaymentMap(bills), [bills]);
 
   const exportColumns = useMemo<ExportColumn<Customer>[]>(() => [
     { header: 'Name', accessor: c => c.name },
     { header: 'Phone', accessor: c => c.phone },
+    { header: 'GSTIN', accessor: c => c.gstin || '' },
     { header: 'Address', accessor: c => c.address || '' },
+    { header: 'Tags', accessor: c => (c.tags ?? []).join('; ') },
+    { header: 'Credit limit (₹)', accessor: c => c.creditLimit ?? '' },
     { header: 'Pending (₹)', accessor: c => c.pendingAmount },
+    { header: 'Aging', accessor: c => agingMap.get(c.id)?.bucket ?? '' },
     { header: 'Status', accessor: c => customerStatus(c) },
     {
       header: 'Last paid',
@@ -125,12 +184,22 @@ export function ShopCustomers() {
         return d ? formatDate(d) : '—';
       },
     },
-  ], [lastPayments]);
+  ], [lastPayments, agingMap]);
 
   const openAdd = () => { setForm(emptyForm); setFormError({}); setAddOpen(true); };
   const openEdit = (c: Customer) => {
     setEditTarget(c);
-    setForm({ name: c.name, phone: c.phone, address: c.address || '' });
+    setForm({
+      name: c.name,
+      phone: c.phone,
+      address: c.address || '',
+      gstin: c.gstin || '',
+      creditLimit: c.creditLimit ? String(c.creditLimit) : '',
+      area: c.area || '',
+      pincode: c.pincode || '',
+      email: c.email || '',
+      tags: c.tags ?? [],
+    });
     setFormError({});
     setEditOpen(true);
   };
@@ -143,27 +212,30 @@ export function ShopCustomers() {
     return Object.keys(errs).length === 0;
   };
 
+  const buildFromForm = (): Omit<Customer, 'id' | 'pendingAmount'> => ({
+    name: form.name.trim(),
+    phone: form.phone.trim(),
+    address: form.address.trim() || undefined,
+    gstin: form.gstin.trim() || undefined,
+    creditLimit: form.creditLimit ? Number(form.creditLimit) : undefined,
+    area: form.area.trim() || undefined,
+    pincode: form.pincode.trim() || undefined,
+    email: form.email.trim() || undefined,
+    tags: form.tags.length ? form.tags : undefined,
+  });
+
   const handleSave = () => {
     if (!validateForm()) return;
-    setCustomers(prev => [...prev, {
-      id: generateId(),
-      name: form.name.trim(),
-      phone: form.phone.trim(),
-      address: form.address.trim() || undefined,
-      pendingAmount: 0,
-    }]);
+    setCustomers(prev => [...prev, { id: generateId(), pendingAmount: 0, ...buildFromForm() }]);
     setAddOpen(false);
     addToast('success', 'Customer added');
   };
 
   const handleEditSave = () => {
     if (!validateForm() || !editTarget) return;
-    setCustomers(prev => prev.map(c =>
-      c.id === editTarget.id
-        ? { ...c, name: form.name.trim(), phone: form.phone.trim(), address: form.address.trim() || undefined }
-        : c
-    ));
-    if (selected?.id === editTarget.id) setSelected(prev => prev ? { ...prev, name: form.name.trim(), phone: form.phone.trim() } : null);
+    const updated = buildFromForm();
+    setCustomers(prev => prev.map(c => c.id === editTarget.id ? { ...c, ...updated } : c));
+    if (selected?.id === editTarget.id) setSelected(prev => prev ? { ...prev, ...updated } : null);
     setEditOpen(false);
     addToast('success', 'Customer updated');
   };
@@ -216,12 +288,16 @@ export function ShopCustomers() {
 
   const initial = (name: string) => name.trim().charAt(0).toUpperCase() || '?';
 
+  const toggleTag = (t: CustomerTag) => {
+    setForm(f => ({ ...f, tags: f.tags.includes(t) ? f.tags.filter(x => x !== t) : [...f.tags, t] }));
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Customers</h1>
-          <p className="mt-1 text-sm text-gray-500">Manage customers and track pending dues.</p>
+          <p className="mt-1 text-sm text-gray-500">Manage customers, track udhaar, and watch overdue debts.</p>
         </div>
         <div className="flex items-center gap-2">
           <ExportMenu<Customer>
@@ -251,22 +327,79 @@ export function ShopCustomers() {
           value={clearedCount.toString()}
           icon={<AlertCircle size={18} />}
           trend={`${Math.round((clearedCount / customersList.length) * 100)}% cleared`}
-          trendUp={true}
+          trendUp
         />
       </div>
 
+      {/* Aging buckets */}
+      {totalPending > 0 && (
+        <Card>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Udhaar aging</h3>
+            <p className="text-xs text-gray-500">Click a bucket to filter</p>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {(['0-30', '31-60', '61-90', '90+'] as AgingBucket[]).map(bucket => {
+              const t = AGING_TONES[bucket];
+              const data = agingTotals[bucket];
+              const active = duesFilter === bucket;
+              return (
+                <button
+                  key={bucket}
+                  onClick={() => setDuesFilter(active ? '' : bucket)}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    active ? 'ring-2 ring-emerald-500 ring-offset-1 dark:ring-offset-gray-900' : ''
+                  } ${t.bg} ${t.border}`}
+                >
+                  <p className={`text-xs font-medium ${t.text}`}>{t.label}</p>
+                  <p className="text-lg font-bold mt-1 tabular-nums">{formatCurrency(data.amount)}</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">{data.count} customer{data.count === 1 ? '' : 's'}</p>
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
       <Card>
-        <div className="grid gap-3 sm:grid-cols-[1fr_200px]">
-          <SearchInput placeholder="Search by name or phone..." value={search} onSearch={setSearch} />
-          <Dropdown
-            options={[
-              { label: 'All customers', value: '' },
-              { label: `With dues (${dueCount})`, value: 'with' },
-              { label: `Cleared (${clearedCount})`, value: 'cleared' },
-            ]}
-            value={duesFilter}
-            onChange={e => setDuesFilter(e.target.value as DuesFilter)}
-          />
+        <div className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-[1fr_200px]">
+            <SearchInput placeholder="Search by name, phone, GSTIN, area..." value={search} onSearch={setSearch} />
+            <Dropdown
+              options={[
+                { label: 'All customers', value: '' },
+                { label: `With dues (${dueCount})`, value: 'with' },
+                { label: `Cleared (${clearedCount})`, value: 'cleared' },
+                { label: `Aged 0-30d`, value: '0-30' },
+                { label: `Aged 31-60d`, value: '31-60' },
+                { label: `Aged 61-90d`, value: '61-90' },
+                { label: `Aged 90+d`, value: '90+' },
+              ]}
+              value={duesFilter}
+              onChange={e => setDuesFilter(e.target.value as DuesFilter)}
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setTagFilter('')}
+              className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
+                !tagFilter ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/50 dark:text-emerald-400' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+              }`}
+            >All tags</button>
+            {(['wholesale', 'retail', 'vip'] as CustomerTag[]).map(t => {
+              const tone = TAG_TONES[t];
+              const active = tagFilter === t;
+              return (
+                <button
+                  key={t}
+                  onClick={() => setTagFilter(active ? '' : t)}
+                  className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors capitalize ${
+                    active ? `${tone.bg} ${tone.text} border-current` : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                  }`}
+                >{t}</button>
+              );
+            })}
+          </div>
         </div>
       </Card>
 
@@ -278,25 +411,40 @@ export function ShopCustomers() {
               key: 'name',
               header: 'Customer',
               sortable: true,
-              render: c => (
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-semibold text-sm shrink-0">
-                    {initial(c.name)}
+              render: c => {
+                const aging = agingMap.get(c.id);
+                const health = customerHealth(c, aging ?? null);
+                const ht = HEALTH_TONES[health];
+                return (
+                  <div className="flex items-center gap-3">
+                    <div className="relative w-9 h-9 shrink-0">
+                      <div className="w-9 h-9 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-semibold text-sm">
+                        {initial(c.name)}
+                      </div>
+                      <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full ring-2 ring-white dark:ring-gray-900 ${ht.bg}`} title={`Health: ${ht.label}`} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-gray-900 dark:text-white">{c.name}</span>
+                        {c.tags?.map(tag => {
+                          const tone = TAG_TONES[tag];
+                          return <span key={tag} className={`text-[10px] font-medium uppercase px-1.5 py-0.5 rounded ${tone.bg} ${tone.text}`}>{tag}</span>;
+                        })}
+                      </div>
+                      {c.address && <p className="text-xs text-gray-400 truncate max-w-[180px]">{c.address}</p>}
+                      {c.gstin && <p className="text-[11px] font-mono text-gray-400">{c.gstin}</p>}
+                    </div>
                   </div>
-                  <div>
-                    <span className="font-medium text-gray-900 dark:text-white">{c.name}</span>
-                    {c.address && <p className="text-xs text-gray-400 truncate max-w-[180px]">{c.address}</p>}
-                  </div>
-                </div>
-              ),
+                );
+              },
             },
             {
               key: 'phone',
               header: 'Phone',
               render: c => (
-                <span className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
+                <a href={`tel:${c.phone}`} onClick={e => e.stopPropagation()} className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400">
                   <Phone size={13} /> {c.phone}
-                </span>
+                </a>
               ),
             },
             {
@@ -305,11 +453,30 @@ export function ShopCustomers() {
               sortable: true,
               render: c => {
                 const lastPaid = lastPayments.get(c.id);
+                const aging = agingMap.get(c.id);
+                const util = c.creditLimit && c.creditLimit > 0 ? c.pendingAmount / c.creditLimit : null;
                 return (
                   <div>
-                    {c.pendingAmount > 0
-                      ? <span className="font-semibold text-amber-600 dark:text-amber-400 tabular-nums">{formatCurrency(c.pendingAmount)}</span>
-                      : <Badge variant="success">Cleared</Badge>}
+                    {c.pendingAmount > 0 ? (
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-amber-600 dark:text-amber-400 tabular-nums">{formatCurrency(c.pendingAmount)}</span>
+                        {aging && (
+                          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${AGING_TONES[aging.bucket].bg} ${AGING_TONES[aging.bucket].text}`}>
+                            {AGING_TONES[aging.bucket].label}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <Badge variant="success">Cleared</Badge>
+                    )}
+                    {util != null && (
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <div className="w-20 h-1 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                          <div className={`h-full ${util > 1 ? 'bg-red-500' : util > 0.8 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, util * 100)}%` }} />
+                        </div>
+                        <span className="text-[10px] text-gray-500 tabular-nums">{Math.round(util * 100)}%</span>
+                      </div>
+                    )}
                     {lastPaid && (
                       <p className="text-[11px] text-gray-400 mt-0.5" title={formatDate(lastPaid)}>
                         Last paid {formatRelativeTime(lastPaid)}
@@ -325,6 +492,7 @@ export function ShopCustomers() {
               className: 'text-right',
               render: c => (
                 <div className="flex items-center justify-end gap-1">
+                  <Button variant="ghost" size="sm" icon={<BookOpen size={13} />} onClick={e => { e.stopPropagation(); navigate(`/shop/customers/${c.id}`); }}>Ledger</Button>
                   <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={e => { e.stopPropagation(); openDetail(c); }}>View</Button>
                   {canEdit && <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={e => { e.stopPropagation(); openEdit(c); }}>Edit</Button>}
                   {c.pendingAmount > 0 && (
@@ -352,7 +520,7 @@ export function ShopCustomers() {
                 icon={<Users size={28} />}
                 title="No customers match your filters"
                 description="Try a different search term or clear the dues filter."
-                action={<Button variant="secondary" size="sm" onClick={() => { setSearch(''); setDuesFilter(''); }}>Clear filters</Button>}
+                action={<Button variant="secondary" size="sm" onClick={() => { setSearch(''); setDuesFilter(''); setTagFilter(''); }}>Clear filters</Button>}
                 compact
               />
             )
@@ -371,64 +539,71 @@ export function ShopCustomers() {
 
       {/* Mobile cards */}
       <div className="space-y-3 sm:hidden">
-        {loading ? <CardListSkeleton rows={4} showAvatar /> : pagination.pageData.map(c => (
-          <div key={c.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
-            <button type="button" onClick={() => openDetail(c)} className="block w-full text-left">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-semibold shrink-0">
-                  {initial(c.name)}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-gray-900 dark:text-white truncate">{c.name}</p>
-                  <p className="text-xs text-gray-500 flex items-center gap-1"><Phone size={11} /> {c.phone}</p>
-                </div>
-                <div className="text-right shrink-0">
-                  {c.pendingAmount > 0
-                    ? <p className="text-amber-600 dark:text-amber-400 font-semibold tabular-nums">{formatCurrency(c.pendingAmount)}</p>
-                    : <Badge variant="success">Cleared</Badge>}
-                  {lastPayments.get(c.id) && (
-                    <p className="text-[10px] text-gray-400 mt-0.5">
-                      paid {formatRelativeTime(lastPayments.get(c.id)!)}
+        {loading ? <CardListSkeleton rows={4} showAvatar /> : pagination.pageData.map(c => {
+          const aging = agingMap.get(c.id);
+          return (
+            <div key={c.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+              <button type="button" onClick={() => openDetail(c)} className="block w-full text-left">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-semibold shrink-0">
+                    {initial(c.name)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-gray-900 dark:text-white truncate flex items-center gap-1.5">
+                      {c.name}
+                      {c.tags?.[0] && (() => {
+                        const tone = TAG_TONES[c.tags[0]];
+                        return <span className={`text-[10px] font-medium uppercase px-1.5 py-0.5 rounded ${tone.bg} ${tone.text}`}>{c.tags[0]}</span>;
+                      })()}
                     </p>
-                  )}
+                    <a href={`tel:${c.phone}`} onClick={e => e.stopPropagation()} className="text-xs text-gray-500 flex items-center gap-1"><Phone size={11} /> {c.phone}</a>
+                  </div>
+                  <div className="text-right shrink-0">
+                    {c.pendingAmount > 0
+                      ? <p className="text-amber-600 dark:text-amber-400 font-semibold tabular-nums">{formatCurrency(c.pendingAmount)}</p>
+                      : <Badge variant="success">Cleared</Badge>}
+                    {aging && (
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full mt-0.5 inline-block ${AGING_TONES[aging.bucket].bg} ${AGING_TONES[aging.bucket].text}`}>
+                        {AGING_TONES[aging.bucket].label}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </button>
-            {(canEdit || c.pendingAmount > 0) && (
+              </button>
               <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-800 flex gap-2">
-                {canEdit && <Button variant="ghost" size="sm" icon={<Pencil size={12} />} onClick={() => openEdit(c)} className="flex-1">Edit</Button>}
+                <Button variant="ghost" size="sm" icon={<BookOpen size={12} />} onClick={() => navigate(`/shop/customers/${c.id}`)} className="flex-1">Ledger</Button>
                 {c.pendingAmount > 0 && <Button variant="ghost" size="sm" icon={<Share2 size={12} />} onClick={() => sendWhatsAppReminder(c)} className="flex-1">Remind</Button>}
                 {canEdit && c.pendingAmount > 0 && <Button variant="primary" size="sm" onClick={() => requestSettle(c)} className="flex-1">Settle</Button>}
               </div>
-            )}
-          </div>
-        ))}
+            </div>
+          );
+        })}
       </div>
 
       {/* Add Customer Modal */}
-      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add customer">
-        <div className="space-y-4">
-          <Input label="Name *" placeholder="e.g. Ramesh Kumar" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} error={formError.name} />
-          <Input label="Phone *" placeholder="10-digit mobile number" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} error={formError.phone} />
-          <Input label="Address (optional)" placeholder="Shop or home address" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={handleSave}>Save customer</Button>
-          </div>
-        </div>
+      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add customer" size="lg">
+        <CustomerForm
+          form={form}
+          formError={formError}
+          setForm={setForm}
+          toggleTag={toggleTag}
+          onCancel={() => setAddOpen(false)}
+          onSave={handleSave}
+          saveLabel="Save customer"
+        />
       </Modal>
 
       {/* Edit Customer Modal */}
-      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit customer">
-        <div className="space-y-4">
-          <Input label="Name *" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} error={formError.name} />
-          <Input label="Phone *" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} error={formError.phone} />
-          <Input label="Address" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={handleEditSave}>Save changes</Button>
-          </div>
-        </div>
+      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit customer" size="lg">
+        <CustomerForm
+          form={form}
+          formError={formError}
+          setForm={setForm}
+          toggleTag={toggleTag}
+          onCancel={() => setEditOpen(false)}
+          onSave={handleEditSave}
+          saveLabel="Save changes"
+        />
       </Modal>
 
       {/* Customer Details Modal */}
@@ -441,7 +616,8 @@ export function ShopCustomers() {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-lg font-semibold text-gray-900 dark:text-white">{selected.name}</p>
-                <p className="text-sm text-gray-500 flex items-center gap-1.5"><Phone size={13} /> {selected.phone}</p>
+                <p className="text-sm text-gray-500 flex items-center gap-1.5"><Phone size={13} /> <a href={`tel:${selected.phone}`} className="hover:text-emerald-600 dark:hover:text-emerald-400">{selected.phone}</a></p>
+                {selected.gstin && <p className="text-xs font-mono text-gray-400 mt-0.5">GSTIN {selected.gstin}</p>}
                 {selected.address && <p className="text-xs text-gray-400 mt-1">{selected.address}</p>}
               </div>
               <div className="text-right shrink-0">
@@ -452,17 +628,38 @@ export function ShopCustomers() {
               </div>
             </div>
 
+            {/* Credit limit utilization */}
+            {selected.creditLimit && selected.creditLimit > 0 && (
+              <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-800">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Credit utilization</span>
+                  <span className="text-xs text-gray-500 tabular-nums">
+                    {formatCurrency(selected.pendingAmount)} / {formatCurrency(selected.creditLimit)}
+                  </span>
+                </div>
+                {(() => {
+                  const util = selected.pendingAmount / selected.creditLimit;
+                  return (
+                    <>
+                      <div className="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                        <div className={`h-full transition-all ${util > 1 ? 'bg-red-500' : util > 0.8 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, util * 100)}%` }} />
+                      </div>
+                      {util > 1 && (
+                        <p className="mt-2 text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
+                          <AlertTriangle size={12} /> Over limit by {formatCurrency(selected.pendingAmount - selected.creditLimit)}
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+
             <div className="flex gap-2 flex-wrap">
+              <Button variant="secondary" size="sm" icon={<BookOpen size={13} />} onClick={() => { setSelected(null); navigate(`/shop/customers/${selected.id}`); }}>Open ledger</Button>
               {canEdit && <Button variant="secondary" size="sm" icon={<Pencil size={13} />} onClick={() => { setSelected(null); openEdit(selected); }}>Edit</Button>}
               {selected.pendingAmount > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  icon={<Share2 size={13} />}
-                  onClick={() => sendWhatsAppReminder(selected)}
-                >
-                  WhatsApp Reminder
-                </Button>
+                <Button variant="ghost" size="sm" icon={<Share2 size={13} />} onClick={() => sendWhatsAppReminder(selected)}>WhatsApp Reminder</Button>
               )}
               {canEdit && selected.pendingAmount > 0 && (
                 <Button variant="primary" size="sm" onClick={() => { requestSettle(selected); setSelected(null); }}>Clear payment</Button>
@@ -525,6 +722,64 @@ export function ShopCustomers() {
           </div>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+interface CustomerFormProps {
+  form: CustomerFormState;
+  formError: { name?: string; phone?: string };
+  setForm: React.Dispatch<React.SetStateAction<CustomerFormState>>;
+  toggleTag: (t: CustomerTag) => void;
+  onCancel: () => void;
+  onSave: () => void;
+  saveLabel: string;
+}
+
+function CustomerForm({ form, formError, setForm, toggleTag, onCancel, onSave, saveLabel }: CustomerFormProps) {
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Input label="Name *" placeholder="e.g. Ramesh Kumar" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} error={formError.name} />
+        <Input label="Phone *" placeholder="10-digit mobile number" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} error={formError.phone} />
+      </div>
+      <Input label="Email" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="optional" />
+      <Input label="Address" value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="Street, area, city" />
+      <div className="grid grid-cols-2 gap-4">
+        <Input label="Area / Locality" value={form.area} onChange={e => setForm(f => ({ ...f, area: e.target.value }))} placeholder="Karol Bagh" />
+        <Input label="Pin code" value={form.pincode} onChange={e => setForm(f => ({ ...f, pincode: e.target.value }))} placeholder="6-digit" />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <Input label="GSTIN (B2B)" value={form.gstin} onChange={e => setForm(f => ({ ...f, gstin: e.target.value }))} placeholder="07AAACX1234X1Z5" />
+        <Input label="Credit limit (₹)" type="number" value={form.creditLimit} onChange={e => setForm(f => ({ ...f, creditLimit: e.target.value }))} placeholder="0 = no limit" />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tags</label>
+        <div className="flex flex-wrap gap-2">
+          {(['wholesale', 'retail', 'vip'] as CustomerTag[]).map(t => {
+            const tone = TAG_TONES[t];
+            const active = form.tags.includes(t);
+            return (
+              <button
+                type="button"
+                key={t}
+                onClick={() => toggleTag(t)}
+                className={`text-xs px-3 py-1.5 rounded-full border transition-colors capitalize ${
+                  active
+                    ? `${tone.bg} ${tone.text} border-current`
+                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                }`}
+              >
+                {t}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 pt-2">
+        <Button variant="secondary" onClick={onCancel}>Cancel</Button>
+        <Button variant="primary" onClick={onSave}>{saveLabel}</Button>
+      </div>
     </div>
   );
 }

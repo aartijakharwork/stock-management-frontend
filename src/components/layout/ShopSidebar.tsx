@@ -12,6 +12,8 @@ import {
   X,
   Store,
   BarChart3,
+  Wallet,
+  Truck,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -50,6 +52,8 @@ const navGroups: NavGroup[] = [
       { to: '/shop/inventory', icon: Package, label: 'Inventory', module: 'inventory' },
       { to: '/shop/customers', icon: Users, label: 'Customers', module: 'customers' },
       { to: '/shop/bills', icon: FileText, label: 'Bills History', module: 'bills' },
+      { to: '/shop/expenses', icon: Wallet, label: 'Expenses', module: 'expenses' },
+      { to: '/shop/suppliers', icon: Truck, label: 'Suppliers', module: 'suppliers' },
     ],
   },
   {

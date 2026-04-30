@@ -1,5 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Pencil, Trash2, PackageX, AlertTriangle, Package, TrendingUp } from 'lucide-react';
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  PackageX,
+  AlertTriangle,
+  Package,
+  TrendingUp,
+  ChevronDown,
+  ChevronUp,
+  Upload,
+  Sparkles,
+} from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card, StatCard } from '../../components/ui/Card';
 import { SearchInput } from '../../components/ui/SearchInput';
@@ -11,7 +23,9 @@ import { Dropdown } from '../../components/ui/Dropdown';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ExportMenu } from '../../components/ui/ExportMenu';
 import { CardListSkeleton, TableSkeleton } from '../../components/ui/Skeleton';
-import { inventoryItems as initialItems } from '../../data/shop-dummy';
+import { Toggle } from '../../components/ui/Toggle';
+import { JargonHint } from '../../components/ui/JargonHint';
+import { inventoryItems as initialItems, suppliers, bills } from '../../data/shop-dummy';
 import { formatCurrency, generateId } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { usePermissions } from '../../context/PermissionContext';
@@ -21,26 +35,81 @@ import type { InventoryItem } from '../../types';
 import type { ExportColumn } from '../../utils/exporters';
 
 const DEFAULT_CATEGORIES = Array.from(new Set(initialItems.map(i => i.category))).sort();
-const emptyItem: Omit<InventoryItem, 'id'> = { name: '', price: 0, stock: 0, category: '', unit: 'piece' };
+const DEFAULT_TAX_RATE = 18;
+const DEFAULT_REORDER = 10;
 
-const stockStatus = (stock: number) => stock === 0 ? 'Out of stock' : stock <= 5 ? 'Critical' : stock <= 10 ? 'Low' : 'In stock';
+const emptyItem: Omit<InventoryItem, 'id'> = {
+  name: '',
+  price: 0,
+  stock: 0,
+  category: '',
+  unit: 'piece',
+  costPrice: 0,
+  sku: '',
+  barcode: '',
+  reorderLevel: DEFAULT_REORDER,
+  supplierId: '',
+  hsn: '',
+  taxRate: DEFAULT_TAX_RATE,
+  expiryDate: '',
+  batchNo: '',
+};
+
+const isLowStock = (i: InventoryItem) => i.stock > 0 && i.stock <= (i.reorderLevel ?? DEFAULT_REORDER);
+
+const stockStatus = (i: InventoryItem) =>
+  i.stock === 0 ? 'Out of stock'
+  : isLowStock(i) ? 'Low (below reorder)'
+  : 'In stock';
+
+const calcMargin = (cost?: number, sell?: number) => {
+  if (!cost || !sell || cost <= 0 || sell <= 0) return null;
+  return ((sell - cost) / sell) * 100;
+};
+
+const lastSoldMap = (() => {
+  const map = new Map<string, string>();
+  bills.forEach(b => {
+    b.items.forEach(it => {
+      const prev = map.get(it.id);
+      if (!prev || b.date > prev) map.set(it.id, b.date);
+    });
+  });
+  return map;
+})();
 
 const INVENTORY_EXPORT_COLUMNS: ExportColumn<InventoryItem>[] = [
+  { header: 'SKU', accessor: i => i.sku ?? '' },
   { header: 'Name', accessor: i => i.name },
   { header: 'Category', accessor: i => i.category },
   { header: 'Unit', accessor: i => i.unit },
+  { header: 'Cost (₹)', accessor: i => i.costPrice ?? '' },
   { header: 'Price (₹)', accessor: i => i.price },
+  { header: 'Margin %', accessor: i => {
+    const m = calcMargin(i.costPrice, i.price);
+    return m == null ? '' : m.toFixed(1);
+  } },
   { header: 'Stock', accessor: i => i.stock },
+  { header: 'Reorder level', accessor: i => i.reorderLevel ?? '' },
   { header: 'Stock value (₹)', accessor: i => i.price * i.stock },
-  { header: 'Status', accessor: i => stockStatus(i.stock) },
+  { header: 'HSN', accessor: i => i.hsn ?? '' },
+  { header: 'Tax %', accessor: i => i.taxRate ?? '' },
+  { header: 'Status', accessor: i => stockStatus(i) },
 ];
 
-function StockPill({ stock, unit }: { stock: number; unit: string }) {
+function StockPill({ item }: { item: InventoryItem }) {
+  const { stock, unit } = item;
   const label = `${stock} ${unit}${stock === 1 ? '' : 's'}`;
   if (stock === 0) return <Badge variant="danger">Out of stock</Badge>;
-  if (stock <= 5) return <Badge variant="danger">{label}</Badge>;
-  if (stock <= 10) return <Badge variant="warning">{label}</Badge>;
+  if (isLowStock(item)) return <Badge variant="warning">{label}</Badge>;
   return <Badge variant="success">{label}</Badge>;
+}
+
+function MarginBadge({ cost, price }: { cost?: number; price: number }) {
+  const m = calcMargin(cost, price);
+  if (m == null) return <span className="text-xs text-gray-400">—</span>;
+  const tone = m >= 30 ? 'success' : m >= 15 ? 'warning' : 'danger';
+  return <Badge variant={tone}>{m.toFixed(0)}%</Badge>;
 }
 
 type StockFilter = '' | 'low' | 'out';
@@ -56,6 +125,9 @@ export function ShopInventory() {
   const [form, setForm] = useState<Omit<InventoryItem, 'id'>>(emptyItem);
   const [newCategory, setNewCategory] = useState('');
   const [addingCategory, setAddingCategory] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showCost, setShowCost] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const { addToast } = useToast();
   const { can } = usePermissions();
@@ -70,6 +142,11 @@ export function ShopInventory() {
   const canEdit = can('inventory', 'edit');
   const canDelete = can('inventory', 'delete');
 
+  const supplierOptions = useMemo(() => [
+    { label: '— None —', value: '' },
+    ...suppliers.map(s => ({ label: s.name, value: s.id })),
+  ], []);
+
   const allCategories = useMemo(() =>
     Array.from(new Set([...categories, ...items.map(i => i.category)])).sort(),
     [items, categories]
@@ -83,10 +160,15 @@ export function ShopInventory() {
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     return items.filter(i => {
-      const matchesSearch = !term || i.name.toLowerCase().includes(term) || i.category.toLowerCase().includes(term);
+      const matchesSearch = !term
+        || i.name.toLowerCase().includes(term)
+        || i.category.toLowerCase().includes(term)
+        || (i.sku?.toLowerCase().includes(term) ?? false)
+        || (i.barcode?.toLowerCase().includes(term) ?? false)
+        || (i.hsn?.toLowerCase().includes(term) ?? false);
       const matchesCat = !categoryFilter || i.category === categoryFilter;
       const matchesStock = !stockFilter
-        || (stockFilter === 'low' && i.stock > 0 && i.stock <= 10)
+        || (stockFilter === 'low' && isLowStock(i))
         || (stockFilter === 'out' && i.stock === 0);
       return matchesSearch && matchesCat && matchesStock;
     });
@@ -99,19 +181,44 @@ export function ShopInventory() {
       item: (a, b) => a.name.localeCompare(b.name),
       price: (a, b) => a.price - b.price,
       stock: (a, b) => a.stock - b.stock,
+      margin: (a, b) => (calcMargin(a.costPrice, a.price) ?? -1) - (calcMargin(b.costPrice, b.price) ?? -1),
     },
   });
 
   const totalValue = useMemo(() => items.reduce((s, i) => s + i.price * i.stock, 0), [items]);
-  const lowStockCount = useMemo(() => items.filter(i => i.stock > 0 && i.stock <= 10).length, [items]);
+  const lowStockCount = useMemo(() => items.filter(isLowStock).length, [items]);
   const outOfStockCount = useMemo(() => items.filter(i => i.stock === 0).length, [items]);
 
-  const openAdd = () => { setEditing(null); setForm(emptyItem); setAddingCategory(false); setNewCategory(''); setModalOpen(true); };
-  const openEdit = (item: InventoryItem) => {
-    setEditing(item);
-    setForm({ name: item.name, price: item.price, stock: item.stock, category: item.category, unit: item.unit });
+  const openAdd = () => {
+    setEditing(null);
+    setForm(emptyItem);
     setAddingCategory(false);
     setNewCategory('');
+    setShowAdvanced(false);
+    setModalOpen(true);
+  };
+
+  const openEdit = (item: InventoryItem) => {
+    setEditing(item);
+    setForm({
+      name: item.name,
+      price: item.price,
+      stock: item.stock,
+      category: item.category,
+      unit: item.unit,
+      costPrice: item.costPrice ?? 0,
+      sku: item.sku ?? '',
+      barcode: item.barcode ?? '',
+      reorderLevel: item.reorderLevel ?? DEFAULT_REORDER,
+      supplierId: item.supplierId ?? '',
+      hsn: item.hsn ?? '',
+      taxRate: item.taxRate ?? DEFAULT_TAX_RATE,
+      expiryDate: item.expiryDate ?? '',
+      batchNo: item.batchNo ?? '',
+    });
+    setAddingCategory(false);
+    setNewCategory('');
+    setShowAdvanced(Boolean(item.sku || item.barcode || item.hsn || item.supplierId));
     setModalOpen(true);
     track({
       kind: 'item',
@@ -138,6 +245,9 @@ export function ShopInventory() {
       addToast('error', 'Please fill required fields');
       return;
     }
+    if (form.costPrice && form.price && form.costPrice > form.price) {
+      addToast('warning', 'Cost is higher than sell price — margin will be negative');
+    }
     if (editing) {
       setItems(prev => prev.map(i => i.id === editing.id ? { ...i, ...form } : i));
       addToast('success', 'Item updated');
@@ -154,14 +264,17 @@ export function ShopInventory() {
     addToast('success', 'Item deleted');
   };
 
+  const margin = calcMargin(form.costPrice, form.price);
+  const supplierName = (id?: string) => suppliers.find(s => s.id === id)?.name;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Inventory</h1>
-          <p className="mt-1 text-sm text-gray-500">Manage items, prices and stock levels.</p>
+          <p className="mt-1 text-sm text-gray-500">Manage items, prices, costs and stock levels.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <ExportMenu<InventoryItem>
             baseName="inventory"
             title="Inventory export"
@@ -170,6 +283,7 @@ export function ShopInventory() {
             rows={filtered}
             size="md"
           />
+          {canAdd && <Button variant="secondary" icon={<Upload size={16} />} onClick={() => setImportOpen(true)}>Bulk import</Button>}
           {canAdd && <Button variant="primary" icon={<Plus size={16} />} onClick={openAdd}>Add item</Button>}
         </div>
       </div>
@@ -179,7 +293,7 @@ export function ShopInventory() {
         <StatCard title="Total Items" value={String(items.length)} icon={<Package size={18} />} />
         <StatCard title="Stock Value" value={formatCurrency(totalValue)} icon={<TrendingUp size={18} />} />
         <StatCard
-          title="Low Stock"
+          title="Below Reorder"
           value={String(lowStockCount)}
           icon={<AlertTriangle size={18} />}
           trend={lowStockCount > 0 ? 'Action needed' : 'All good'}
@@ -199,7 +313,13 @@ export function ShopInventory() {
       {/* Filters */}
       <Card>
         <div className="space-y-3">
-          <SearchInput placeholder="Search by name or category..." value={search} onSearch={setSearch} />
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+            <SearchInput placeholder="Search by name, SKU, barcode, HSN..." value={search} onSearch={setSearch} className="flex-1" />
+            <div className="flex items-center gap-2 shrink-0">
+              <Toggle checked={showCost} onChange={setShowCost} />
+              <span className="text-xs text-gray-500">Show cost & margin</span>
+            </div>
+          </div>
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => { setCategoryFilter(''); setStockFilter(''); }}
@@ -215,7 +335,7 @@ export function ShopInventory() {
                 stockFilter === 'low' ? 'border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/50' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
               }`}
             >
-              ⚠ Low stock ({lowStockCount})
+              ⚠ Below reorder ({lowStockCount})
             </button>
             <button
               onClick={() => { setStockFilter('out'); setCategoryFilter(''); }}
@@ -280,35 +400,54 @@ export function ShopInventory() {
                   sortable: true,
                   render: i => (
                     <div>
-                      <p className="text-xs text-gray-500">{i.category}</p>
+                      <p className="text-xs text-gray-500 flex items-center gap-1">
+                        {i.category}
+                        {i.sku && <span className="font-mono text-gray-400">· {i.sku}</span>}
+                      </p>
                       <p className="text-sm font-medium text-gray-900 dark:text-white">{i.name}</p>
+                      {i.supplierId && (
+                        <p className="text-[11px] text-gray-400 mt-0.5">via {supplierName(i.supplierId)}</p>
+                      )}
                     </div>
                   ),
                 },
+                ...(showCost ? [{
+                  key: 'cost',
+                  header: 'Cost',
+                  render: (i: InventoryItem) => <span className="tabular-nums text-gray-500">{i.costPrice ? formatCurrency(i.costPrice) : '—'}</span>,
+                  className: 'text-right',
+                }] : []),
                 {
                   key: 'price',
-                  header: 'Price',
+                  header: 'Sell price',
                   sortable: true,
-                  render: i => <span className="tabular-nums font-medium text-gray-900 dark:text-white">{formatCurrency(i.price)}</span>,
+                  render: (i: InventoryItem) => <span className="tabular-nums font-medium text-gray-900 dark:text-white">{formatCurrency(i.price)}</span>,
                   className: 'text-right',
                 },
+                ...(showCost ? [{
+                  key: 'margin',
+                  header: 'Margin',
+                  sortable: true,
+                  render: (i: InventoryItem) => <MarginBadge cost={i.costPrice} price={i.price} />,
+                  className: 'text-right',
+                }] : []),
                 {
                   key: 'stock',
                   header: 'Stock',
                   sortable: true,
-                  render: i => <StockPill stock={i.stock} unit={i.unit} />,
+                  render: (i: InventoryItem) => <StockPill item={i} />,
                 },
                 {
                   key: 'value',
                   header: 'Value',
-                  render: i => <span className="tabular-nums text-gray-500">{formatCurrency(i.price * i.stock)}</span>,
+                  render: (i: InventoryItem) => <span className="tabular-nums text-gray-500">{formatCurrency(i.price * i.stock)}</span>,
                   className: 'text-right',
                 },
                 {
                   key: 'actions',
                   header: '',
                   className: 'text-right w-40',
-                  render: i => (
+                  render: (i: InventoryItem) => (
                     <div className="flex justify-end gap-1">
                       {canEdit && (
                         <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(i)}>Edit</Button>
@@ -338,14 +477,23 @@ export function ShopInventory() {
             {pagination.pageData.map(i => (
               <li key={i.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs text-gray-500">{i.category}</p>
+                  <div className="min-w-0">
+                    <p className="text-xs text-gray-500 flex items-center gap-1">
+                      {i.category}
+                      {i.sku && <span className="font-mono text-gray-400 truncate">· {i.sku}</span>}
+                    </p>
                     <p className="text-sm font-medium text-gray-900 dark:text-white">{i.name}</p>
                     <p className="text-xs text-gray-500 tabular-nums mt-0.5">Value: {formatCurrency(i.price * i.stock)}</p>
+                    {showCost && i.costPrice ? (
+                      <p className="text-xs text-gray-500 tabular-nums mt-0.5">Cost: {formatCurrency(i.costPrice)} · Margin <MarginBadge cost={i.costPrice} price={i.price} /></p>
+                    ) : null}
+                    {lastSoldMap.get(i.id) && (
+                      <p className="text-[11px] text-gray-400 mt-0.5">Last sold: {lastSoldMap.get(i.id)}</p>
+                    )}
                   </div>
-                  <div className="text-right">
+                  <div className="text-right shrink-0">
                     <span className="tabular-nums text-sm font-semibold text-gray-900 dark:text-white">{formatCurrency(i.price)}</span>
-                    <div className="mt-1"><StockPill stock={i.stock} unit={i.unit} /></div>
+                    <div className="mt-1"><StockPill item={i} /></div>
                   </div>
                 </div>
                 {(canEdit || canDelete) && (
@@ -361,12 +509,31 @@ export function ShopInventory() {
       )}
 
       {/* Add / Edit Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit item' : 'Add item'}>
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit item' : 'Add item'} size="lg">
         <div className="space-y-4">
           <Input label="Item name *" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Engine Oil 5W-30" />
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <Input label="Cost price (₹)" type="number" value={form.costPrice || ''} onChange={e => setForm({ ...form, costPrice: Number(e.target.value) })} placeholder="0" />
+            <Input label="Sell price (₹) *" type="number" value={form.price || ''} onChange={e => setForm({ ...form, price: Number(e.target.value) })} />
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+                Margin <JargonHint term="margin" />
+              </label>
+              <div className={`h-10 rounded-lg border px-3 flex items-center text-sm font-semibold tabular-nums ${
+                margin == null ? 'text-gray-400 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800'
+                : margin >= 30 ? 'text-emerald-700 border-emerald-200 bg-emerald-50 dark:text-emerald-400 dark:border-emerald-500/30 dark:bg-emerald-500/10'
+                : margin >= 15 ? 'text-amber-700 border-amber-200 bg-amber-50 dark:text-amber-400 dark:border-amber-500/30 dark:bg-amber-500/10'
+                : 'text-red-700 border-red-200 bg-red-50 dark:text-red-400 dark:border-red-500/30 dark:bg-red-500/10'
+              }`}>
+                {margin == null ? '—' : `${margin.toFixed(1)}%`}
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Price (₹) *" type="number" value={form.price || ''} onChange={e => setForm({ ...form, price: Number(e.target.value) })} />
             <Input label="Stock *" type="number" value={form.stock || ''} onChange={e => setForm({ ...form, stock: Number(e.target.value) })} />
+            <Input label="Unit" value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} placeholder="e.g. piece, bottle, set" />
           </div>
 
           <div>
@@ -391,7 +558,47 @@ export function ShopInventory() {
             )}
           </div>
 
-          <Input label="Unit" value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} placeholder="e.g. piece, bottle, set" />
+          {/* Advanced fields drawer */}
+          <button
+            type="button"
+            onClick={() => setShowAdvanced(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-2.5 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            <span className="flex items-center gap-2">
+              <Sparkles size={14} className="text-emerald-500" />
+              Advanced fields
+              <span className="text-xs text-gray-400 font-normal">SKU, Barcode, HSN, Tax, Reorder, Supplier, Expiry</span>
+            </span>
+            {showAdvanced ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+
+          {showAdvanced && (
+            <div className="space-y-4 p-4 rounded-lg bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-800">
+              <div className="grid grid-cols-2 gap-4">
+                <Input label="SKU" value={form.sku ?? ''} onChange={e => setForm({ ...form, sku: e.target.value })} placeholder="e.g. OIL-5W30-1L" />
+                <Input label="Barcode" value={form.barcode ?? ''} onChange={e => setForm({ ...form, barcode: e.target.value })} placeholder="EAN-13 or any code" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Input
+                  label={
+                    <>HSN code <JargonHint term="hsn" /></>
+                  }
+                  value={form.hsn ?? ''}
+                  onChange={e => setForm({ ...form, hsn: e.target.value })}
+                  placeholder="8-digit code"
+                />
+                <Input label="Tax rate (%)" type="number" value={form.taxRate ?? ''} onChange={e => setForm({ ...form, taxRate: Number(e.target.value) })} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Input label="Reorder level" type="number" value={form.reorderLevel ?? ''} onChange={e => setForm({ ...form, reorderLevel: Number(e.target.value) })} />
+                <Dropdown label="Supplier" options={supplierOptions} value={form.supplierId ?? ''} onChange={e => setForm({ ...form, supplierId: e.target.value })} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Input label="Expiry date" type="date" value={form.expiryDate ?? ''} onChange={e => setForm({ ...form, expiryDate: e.target.value })} />
+                <Input label="Batch / Lot No." value={form.batchNo ?? ''} onChange={e => setForm({ ...form, batchNo: e.target.value })} placeholder="optional" />
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
@@ -399,6 +606,103 @@ export function ShopInventory() {
           </div>
         </div>
       </Modal>
+
+      {/* Bulk import modal */}
+      <BulkImportModal open={importOpen} onClose={() => setImportOpen(false)} />
     </div>
+  );
+}
+
+interface BulkImportModalProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+function BulkImportModal({ open, onClose }: BulkImportModalProps) {
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [parsedCount, setParsedCount] = useState<number | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const { addToast } = useToast();
+
+  const handleFile = (file: File | null) => {
+    if (!file) return;
+    setFileName(file.name);
+    const fakeRows = Math.floor(Math.random() * 30) + 5;
+    setParsedCount(fakeRows);
+  };
+
+  const handleImport = () => {
+    if (!fileName) return;
+    addToast('success', `${parsedCount} rows queued for import`);
+    setFileName(null);
+    setParsedCount(null);
+    onClose();
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Bulk import inventory" size="md">
+      <div className="space-y-4">
+        <div className="text-sm text-gray-600 dark:text-gray-400">
+          Upload a CSV with these headers: <code className="text-xs bg-gray-100 dark:bg-gray-800 rounded px-1">name, sku, barcode, category, unit, costPrice, price, stock, reorderLevel, hsn, taxRate, supplierId</code>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            const tpl = 'name,sku,barcode,category,unit,costPrice,price,stock,reorderLevel,hsn,taxRate,supplierId\n' +
+                        'Sample Item,SKU-001,8901234567899,Oils,bottle,200,300,50,10,27101981,18,S1';
+            const blob = new Blob([tpl], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'inventory-template.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+          }}
+          className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline"
+        >
+          ↓ Download CSV template
+        </button>
+
+        <label
+          onDragOver={e => { e.preventDefault(); setDragActive(true); }}
+          onDragLeave={() => setDragActive(false)}
+          onDrop={e => {
+            e.preventDefault();
+            setDragActive(false);
+            handleFile(e.dataTransfer.files[0] ?? null);
+          }}
+          className={`flex flex-col items-center justify-center gap-2 p-8 rounded-xl border-2 border-dashed cursor-pointer transition-colors ${
+            dragActive
+              ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10'
+              : 'border-gray-300 dark:border-gray-700 hover:border-emerald-400 hover:bg-gray-50 dark:hover:bg-gray-800/40'
+          }`}
+        >
+          <Upload size={28} className="text-gray-400" />
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            {fileName ? fileName : 'Drag CSV here or click to browse'}
+          </p>
+          {parsedCount != null && (
+            <p className="text-xs text-emerald-600 dark:text-emerald-400">
+              ✓ Parsed {parsedCount} rows · ready to import
+            </p>
+          )}
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={e => handleFile(e.target.files?.[0] ?? null)}
+          />
+        </label>
+
+        <div className="text-xs text-gray-500 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg p-3 text-amber-800 dark:text-amber-400">
+          <strong>Note:</strong> CSV import is currently in preview. Items will be queued and reviewed before they hit live inventory.
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={handleImport} disabled={!fileName}>Import {parsedCount ?? ''} rows</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }

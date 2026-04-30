@@ -23,6 +23,8 @@ const SHOPKEEPER_PERMISSIONS: RolePermissions = {
   roles: { view: true, add: true, edit: true, delete: true },
   settings: { view: true, add: true, edit: true, delete: true },
   subscription: { view: true, add: true, edit: true, delete: true },
+  expenses: { view: true, add: true, edit: true, delete: true },
+  suppliers: { view: true, add: true, edit: true, delete: true },
 };
 
 export function PermissionProvider({ children }: { children: ReactNode }) {
