@@ -11,6 +11,7 @@ import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
 import { Dropdown } from '../../components/ui/Dropdown';
 import { Card, StatCard } from '../../components/ui/Card';
+import { EmptyState } from '../../components/ui/EmptyState';
 import { customers as initialCustomers, bills as initialBills } from '../../data/shop-dummy';
 import { formatCurrency, formatDate, generateId } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
@@ -263,7 +264,24 @@ export function ShopCustomers() {
           ]}
           data={pagination.pageData}
           keyExtractor={c => c.id}
-          emptyMessage="No customers found"
+          emptyState={
+            customersList.length === 0 ? (
+              <EmptyState
+                icon={<Users size={28} />}
+                title="No customers added yet"
+                description="Add a customer to track udhaar (credit), bill history, and send WhatsApp reminders."
+                action={canAdd ? <Button variant="primary" icon={<Plus size={14} />} onClick={openAdd}>Add first customer</Button> : undefined}
+              />
+            ) : (
+              <EmptyState
+                icon={<Users size={28} />}
+                title="No customers match your filters"
+                description="Try a different search term or clear the dues filter."
+                action={<Button variant="secondary" size="sm" onClick={() => { setSearch(''); setDuesFilter(''); }}>Clear filters</Button>}
+                compact
+              />
+            )
+          }
           onRowClick={c => setSelected(c)}
           page={pagination.page}
           totalPages={pagination.totalPages}

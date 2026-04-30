@@ -8,6 +8,7 @@ import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
 import { Dropdown } from '../../components/ui/Dropdown';
+import { EmptyState } from '../../components/ui/EmptyState';
 import { inventoryItems as initialItems } from '../../data/shop-dummy';
 import { formatCurrency, generateId } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
@@ -202,11 +203,21 @@ export function ShopInventory() {
 
       {filtered.length === 0 ? (
         <Card>
-          <div className="flex flex-col items-center gap-3 py-12 text-gray-400">
-            <PackageX size={36} />
-            <p className="text-sm">No items match your filters.</p>
-            <Button variant="ghost" size="sm" onClick={() => { setSearch(''); setCategoryFilter(''); setStockFilter(''); }}>Clear filters</Button>
-          </div>
+          {items.length === 0 ? (
+            <EmptyState
+              icon={<Package size={28} />}
+              title="No items in your inventory yet"
+              description="Add your first item to start billing. You can also bulk-import from a CSV later."
+              action={<Button variant="primary" icon={<Plus size={14} />} onClick={openAdd}>Add first item</Button>}
+            />
+          ) : (
+            <EmptyState
+              icon={<PackageX size={28} />}
+              title="No items match your filters"
+              description="Try a different search term, category, or stock status."
+              action={<Button variant="secondary" size="sm" onClick={() => { setSearch(''); setCategoryFilter(''); setStockFilter(''); }}>Clear filters</Button>}
+            />
+          )}
         </Card>
       ) : (
         <>

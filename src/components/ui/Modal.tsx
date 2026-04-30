@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { X } from 'lucide-react';
+import { Spinner } from './Spinner';
 
 interface ModalProps {
   open: boolean;
@@ -7,6 +8,8 @@ interface ModalProps {
   title: string;
   children: ReactNode;
   size?: 'sm' | 'md' | 'lg';
+  loading?: boolean;
+  loadingLabel?: string;
 }
 
 const sizeClasses = {
@@ -15,7 +18,7 @@ const sizeClasses = {
   lg: 'sm:max-w-3xl',
 };
 
-export function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
+export function Modal({ open, onClose, title, children, size = 'md', loading = false, loadingLabel = 'Loading…' }: ModalProps) {
   useEffect(() => {
     if (open) {
       const original = document.body.style.overflow;
@@ -52,7 +55,16 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
             <X size={18} />
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="p-5">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-14" aria-busy="true" aria-live="polite">
+              <Spinner size="lg" tone="primary" />
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">{loadingLabel}</p>
+            </div>
+          ) : (
+            children
+          )}
+        </div>
       </div>
     </div>
   );

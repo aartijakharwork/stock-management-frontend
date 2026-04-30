@@ -8,6 +8,7 @@ import { Input } from '../../components/ui/Input';
 import { Dropdown } from '../../components/ui/Dropdown';
 import { SearchInput } from '../../components/ui/SearchInput';
 import { Toggle } from '../../components/ui/Toggle';
+import { EmptyState } from '../../components/ui/EmptyState';
 import { Badge } from '../../components/ui/Badge';
 import { staffMembers as initialStaff, roles, staffInvites as initialInvites } from '../../data/shop-dummy';
 import { generateId } from '../../utils/formatters';
@@ -192,7 +193,24 @@ export function ShopStaff() {
               ]}
               data={pagination.pageData}
               keyExtractor={s => s.id}
-              emptyMessage="No staff found."
+              emptyState={
+                staff.length === 0 ? (
+                  <EmptyState
+                    icon={<Users size={28} />}
+                    title="No staff added yet"
+                    description="Add a team member directly, or invite them via a join link."
+                    action={canAdd ? <Button variant="primary" icon={<UserPlus size={14} />} onClick={openAdd}>Add staff</Button> : undefined}
+                    secondaryAction={canAdd ? <Button variant="secondary" icon={<Link2 size={14} />} size="sm" onClick={() => { setInviteForm({ name: '', email: '', phone: '', roleId: roles[0]?.id ?? '' }); setInviteOpen(true); }}>Invite via link</Button> : undefined}
+                  />
+                ) : (
+                  <EmptyState
+                    icon={<Users size={28} />}
+                    title="No staff match your filters"
+                    description="Try a different name or role filter."
+                    compact
+                  />
+                )
+              }
               page={pagination.page}
               totalPages={pagination.totalPages}
               total={pagination.total}
@@ -236,7 +254,14 @@ export function ShopStaff() {
       {tab === 'invites' && (
         <div className="space-y-3">
           {invites.length === 0 ? (
-            <Card><p className="text-center text-sm text-gray-500 py-8">No invites sent yet.</p></Card>
+            <Card>
+              <EmptyState
+                icon={<Mail size={28} />}
+                title="No invites sent yet"
+                description="Invite staff via a secure link they can use to join your shop."
+                action={canAdd ? <Button variant="primary" icon={<Link2 size={14} />} onClick={() => { setInviteForm({ name: '', email: '', phone: '', roleId: roles[0]?.id ?? '' }); setInviteOpen(true); }}>Send first invite</Button> : undefined}
+              />
+            </Card>
           ) : (
             invites.map(inv => (
               <Card key={inv.id}>

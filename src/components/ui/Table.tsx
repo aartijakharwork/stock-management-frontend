@@ -15,6 +15,7 @@ interface TableProps<T> {
   data: T[];
   keyExtractor: (item: T) => string;
   emptyMessage?: string;
+  emptyState?: ReactNode;
   onRowClick?: (item: T) => void;
   page?: number;
   pageSize?: number;
@@ -112,7 +113,7 @@ function generatePageNumbers(current: number, total: number): (number | '...')[]
   return pages;
 }
 
-export function Table<T>({ columns, data, keyExtractor, emptyMessage = 'No data found', onRowClick, page, totalPages, total, onPageChange, sortState, onSort, startIndex, endIndex }: TableProps<T>) {
+export function Table<T>({ columns, data, keyExtractor, emptyMessage = 'No data found', emptyState, onRowClick, page, totalPages, total, onPageChange, sortState, onSort, startIndex, endIndex }: TableProps<T>) {
   const showPagination = page !== undefined && totalPages !== undefined && total !== undefined && onPageChange;
 
   return (
@@ -138,8 +139,8 @@ export function Table<T>({ columns, data, keyExtractor, emptyMessage = 'No data 
           <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
             {data.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="text-center text-gray-500 text-sm py-12">
-                  {emptyMessage}
+                <td colSpan={columns.length} className="text-center text-gray-500 text-sm py-2">
+                  {emptyState ?? <div className="py-10">{emptyMessage}</div>}
                 </td>
               </tr>
             ) : (

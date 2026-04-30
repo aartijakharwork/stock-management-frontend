@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
-  TrendingUp, IndianRupee, Receipt, Clock, Users,
-  Banknote, Smartphone, CreditCard as CardIcon, Package, Download,
+  TrendingUp, TrendingDown, IndianRupee, Clock, Users,
+  Banknote, Smartphone, CreditCard as CardIcon, Download, AlertTriangle,
 } from 'lucide-react';
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend,
@@ -181,41 +181,93 @@ export function ShopReports() {
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* Net Profit hero banner */}
+      <div className={`rounded-xl border p-5 sm:p-6 ${
+        netProfit >= 0
+          ? 'bg-gradient-to-br from-emerald-50 via-white to-white dark:from-emerald-500/10 dark:via-gray-900 dark:to-gray-900 border-emerald-200 dark:border-emerald-500/30'
+          : 'bg-gradient-to-br from-red-50 via-white to-white dark:from-red-500/10 dark:via-gray-900 dark:to-gray-900 border-red-200 dark:border-red-500/30'
+      }`}>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-4">
+            <div className={`w-11 h-11 rounded-lg flex items-center justify-center shrink-0 ${
+              netProfit >= 0
+                ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+                : 'bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400'
+            }`}>
+              {netProfit >= 0 ? <TrendingUp size={22} /> : <AlertTriangle size={22} />}
+            </div>
+            <div>
+              <p className={`text-xs font-medium uppercase tracking-wide ${
+                netProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'
+              }`}>Net Profit · {PERIOD_OPTIONS.find(o => o.value === period)?.label}</p>
+              <p className={`mt-1 text-3xl sm:text-4xl font-bold tabular-nums ${
+                netProfit >= 0 ? 'text-gray-900 dark:text-white' : 'text-red-600 dark:text-red-400'
+              }`}>{formatCurrency(netProfit)}</p>
+              <p className="mt-1 text-xs text-gray-500">
+                {netProfit >= 0 ? 'Collected revenue minus expenses.' : 'Expenses exceed collected revenue — review costs.'}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm sm:justify-end">
+            <div className="text-right">
+              <p className="text-[11px] text-gray-500">Collected</p>
+              <p className="font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums">{formatCurrency(totalCollected)}</p>
+            </div>
+            <span className="text-gray-300 dark:text-gray-700">−</span>
+            <div className="text-right">
+              <p className="text-[11px] text-gray-500">Expenses</p>
+              <p className="font-semibold text-red-600 dark:text-red-400 tabular-nums">{formatCurrency(totalExpenses)}</p>
+            </div>
+            <span className="text-gray-300 dark:text-gray-700">=</span>
+            <div className="text-right">
+              <p className="text-[11px] text-gray-500">Profit</p>
+              <p className={`font-semibold tabular-nums ${netProfit >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                {formatCurrency(netProfit)}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Primary KPI row — 4 money flows */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard title="Total Revenue" value={formatCurrency(totalRevenue)} icon={<IndianRupee size={18} />} trend={`${filteredBills.length} bills`} trendUp />
         <StatCard title="Collected" value={formatCurrency(totalCollected)} icon={<Banknote size={18} />} trend="Cash in hand" trendUp />
         <StatCard title="Pending Dues" value={formatCurrency(totalPending)} icon={<Clock size={18} />} trend="Udhaar balance" trendUp={false} />
-        <StatCard
-          title="Net Profit"
-          value={formatCurrency(netProfit)}
-          icon={<TrendingUp size={18} />}
-          trend={netProfit >= 0 ? 'Revenue – Expenses' : 'Negative margin'}
-          trendUp={netProfit >= 0}
-        />
+        <StatCard title="Total Expenses" value={formatCurrency(totalExpenses)} icon={<TrendingDown size={18} />} trend={`${filteredExpenses.length} entries`} trendUp={false} />
       </div>
 
-      {/* Secondary KPIs */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
-          <p className="text-xs text-gray-500">Total Bills</p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums mt-1">{filteredBills.length}</p>
-          <p className="text-xs text-emerald-600 mt-1">in selected period</p>
+      {/* Secondary KPI strip — context metrics */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-xl p-4 flex items-center gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
+          <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+            <IndianRupee size={17} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] text-gray-500">Total Bills</p>
+            <p className="text-base font-bold text-gray-900 dark:text-white tabular-nums">{filteredBills.length}</p>
+            <p className="text-[11px] text-gray-500">in selected period</p>
+          </div>
         </div>
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
-          <p className="text-xs text-gray-500">Avg Bill Value</p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums mt-1">{formatCurrency(avgBillValue)}</p>
-          <p className="text-xs text-gray-500 mt-1">per transaction</p>
+        <div className="rounded-xl p-4 flex items-center gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
+          <div className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+            <TrendingUp size={17} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] text-gray-500">Avg Bill Value</p>
+            <p className="text-base font-bold text-gray-900 dark:text-white tabular-nums">{formatCurrency(avgBillValue)}</p>
+            <p className="text-[11px] text-gray-500">per transaction</p>
+          </div>
         </div>
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
-          <p className="text-xs text-gray-500">Total Expenses</p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums mt-1">{formatCurrency(totalExpenses)}</p>
-          <p className="text-xs text-red-500 mt-1">{filteredExpenses.length} entries</p>
-        </div>
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
-          <p className="text-xs text-gray-500">Active Customers</p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums mt-1">{topCustomers.length}</p>
-          <p className="text-xs text-gray-500 mt-1">with purchases</p>
+        <div className="rounded-xl p-4 flex items-center gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
+          <div className="w-9 h-9 rounded-lg bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+            <Users size={17} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] text-gray-500">Active Customers</p>
+            <p className="text-base font-bold text-gray-900 dark:text-white tabular-nums">{topCustomers.length}</p>
+            <p className="text-[11px] text-gray-500">with purchases</p>
+          </div>
         </div>
       </div>
 
@@ -256,17 +308,21 @@ export function ShopReports() {
             <p className="text-sm text-gray-400 text-center py-8">No payment data available</p>
           ) : (
             <>
-              <div className="h-[180px] w-full">
+              <div className="h-[180px] w-full relative">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Tooltip contentStyle={tooltipStyle} formatter={(v, n) => [formatCurrency(Number(v)), String(n)]} />
-                    <Pie data={paymentBreakdown} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} paddingAngle={3} stroke="none">
+                    <Pie data={paymentBreakdown} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={45} outerRadius={72} paddingAngle={3} stroke="none">
                       {paymentBreakdown.map(entry => (
                         <Cell key={entry.name} fill={PAYMENT_COLORS[entry.name] || '#94a3b8'} />
                       ))}
                     </Pie>
                   </PieChart>
                 </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <span className="text-[10px] uppercase tracking-wide text-gray-400">Total</span>
+                  <span className="text-sm font-bold text-gray-900 dark:text-white tabular-nums">{formatCurrency(totalCollected)}</span>
+                </div>
               </div>
               <div className="mt-2 space-y-2">
                 {paymentBreakdown.map(entry => (
@@ -312,39 +368,31 @@ export function ShopReports() {
 
       {/* Top Items */}
       <Card className="overflow-hidden">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Top Selling Items</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Top Selling Items</h2>
+          <span className="text-xs text-gray-500">Hover bars for revenue · qty</span>
+        </div>
         {topItems.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-8">No sales data</p>
         ) : (
-          <div className="h-[260px] w-full min-w-0">
+          <div className="h-[300px] w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={topItems} layout="vertical" margin={{ top: 0, right: 8, left: 0, bottom: 0 }}>
+              <BarChart data={topItems} layout="vertical" margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke={gridColor} horizontal={false} />
                 <XAxis type="number" stroke={axisColor} tick={{ fill: axisColor, fontSize: 11 }} tickLine={false} tickFormatter={v => `₹${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
-                <YAxis type="category" dataKey="name" stroke={axisColor} tick={{ fill: isDark ? '#d1d5db' : '#374151', fontSize: 11 }} tickLine={false} width={90} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [name === 'revenue' ? formatCurrency(Number(v)) : `${v} units`, name === 'revenue' ? 'Revenue' : 'Qty']} />
+                <YAxis type="category" dataKey="name" stroke={axisColor} tick={{ fill: isDark ? '#d1d5db' : '#374151', fontSize: 11 }} tickLine={false} width={110} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  formatter={(v, _name, item) => [
+                    `${formatCurrency(Number(v))} · ${item?.payload?.qty ?? 0} units`,
+                    'Revenue',
+                  ]}
+                />
                 <Bar dataKey="revenue" fill="#10b981" radius={[0, 6, 6, 0]} name="revenue" />
               </BarChart>
             </ResponsiveContainer>
           </div>
         )}
-        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {topItems.slice(0, 6).map((item, idx) => (
-            <div key={item.name} className="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800/50">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-xs text-gray-400 w-4 shrink-0">{idx + 1}</span>
-                <div className="w-6 h-6 rounded bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-600 shrink-0">
-                  <Package size={12} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-gray-900 dark:text-white truncate">{item.name}</p>
-                  <p className="text-[11px] text-gray-400">{item.qty} units</p>
-                </div>
-              </div>
-              <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums shrink-0">{formatCurrency(item.revenue)}</span>
-            </div>
-          ))}
-        </div>
       </Card>
 
       {/* Top Customers + Expenses */}
