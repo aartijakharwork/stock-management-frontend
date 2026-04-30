@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Store, Shield, UserCog, Eye, EyeOff } from 'lucide-react';
+import { Store, UserCog, Eye, EyeOff } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useAuth } from '../../context/AuthContext';
@@ -8,9 +8,8 @@ import { useToast } from '../../context/ToastContext';
 import type { UserRole } from '../../types';
 
 const ROLE_OPTIONS: { value: UserRole; label: string; icon: typeof Store; desc: string }[] = [
-  { value: 'shopkeeper', label: 'Shop', icon: Store, desc: 'Shop owner login' },
+  { value: 'shopkeeper', label: 'Shop Owner', icon: Store, desc: 'Shop owner login' },
   { value: 'staff', label: 'Staff', icon: UserCog, desc: 'Staff member login' },
-  { value: 'admin', label: 'Admin', icon: Shield, desc: 'Platform admin' },
 ];
 
 export function Login() {
@@ -34,7 +33,7 @@ export function Login() {
     const success = login(email, password, role);
     if (success) {
       addToast('success', 'Login successful', `Welcome back!`);
-      navigate(role === 'admin' ? '/admin' : '/shop');
+      navigate('/shop');
     } else {
       addToast('error', 'Login failed', 'Invalid credentials');
     }
@@ -46,6 +45,7 @@ export function Login() {
     staff: 'rahul@kumarauto.in',
   };
 
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -53,8 +53,8 @@ export function Login() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-emerald-600 mb-4">
             <Store size={28} className="text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Welcome back</h1>
-          <p className="mt-1 text-sm text-gray-500">Sign in to your ShopManager account</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Shop Portal</h1>
+          <p className="mt-1 text-sm text-gray-500">Sign in to manage your shop</p>
         </div>
 
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6 shadow-sm">

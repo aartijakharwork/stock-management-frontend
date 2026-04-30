@@ -53,6 +53,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback((email: string, _password: string, role: UserRole): boolean => {
     if (!email || !_password) return false;
+    const allowedRoles: UserRole[] = ['shopkeeper', 'staff'];
+    if (!allowedRoles.includes(role)) return false;
     const demoUser = DEMO_USERS[role];
     const loggedIn = { ...demoUser, email };
     setUser(loggedIn);

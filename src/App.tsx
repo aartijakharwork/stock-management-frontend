@@ -5,18 +5,11 @@ import { PermissionProvider } from './context/PermissionContext';
 import { ToastProvider } from './context/ToastContext';
 import { ToastContainer } from './components/ui/Toast';
 
-import { AdminLayout } from './components/layout/AdminLayout';
 import { ShopLayout } from './components/layout/ShopLayout';
 
 import { Login } from './pages/auth/Login';
 import { Signup } from './pages/auth/Signup';
 import { ForgotPassword } from './pages/auth/ForgotPassword';
-
-import { AdminDashboard } from './modules/admin/Dashboard';
-import { ShopManagement } from './modules/admin/ShopManagement';
-import { InviteShop } from './modules/admin/InviteShop';
-import { SubscriptionManagement } from './modules/admin/SubscriptionManagement';
-import { AdminSettings } from './modules/admin/AdminSettings';
 
 import { ShopDashboard } from './modules/shop/Dashboard';
 import { ShopInventory } from './modules/shop/Inventory';
@@ -30,20 +23,15 @@ import { ShopSubscription } from './modules/shop/Subscription';
 
 import type { ReactNode } from 'react';
 
-function ProtectedRoute({ children, allowedRoles }: { children: ReactNode; allowedRoles?: string[] }) {
-  const { isAuthenticated, user } = useAuth();
+function ProtectedRoute({ children }: { children: ReactNode }) {
+  const { isAuthenticated } = useAuth();
   if (!isAuthenticated) return <Navigate to="/auth/login" replace />;
-  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
-    return <Navigate to={user.role === 'admin' ? '/admin' : '/shop'} replace />;
-  }
   return <>{children}</>;
 }
 
 function AuthRedirect({ children }: { children: ReactNode }) {
-  const { isAuthenticated, user } = useAuth();
-  if (isAuthenticated && user) {
-    return <Navigate to={user.role === 'admin' ? '/admin' : '/shop'} replace />;
-  }
+  const { isAuthenticated } = useAuth();
+  if (isAuthenticated) return <Navigate to="/shop" replace />;
   return <>{children}</>;
 }
 
@@ -55,17 +43,8 @@ function AppRoutes() {
       <Route path="/auth/signup" element={<AuthRedirect><Signup /></AuthRedirect>} />
       <Route path="/auth/forgot-password" element={<ForgotPassword />} />
 
-      {/* Admin Panel */}
-      <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminLayout /></ProtectedRoute>}>
-        <Route index element={<AdminDashboard />} />
-        <Route path="shops" element={<ShopManagement />} />
-        <Route path="invite" element={<InviteShop />} />
-        <Route path="subscriptions" element={<SubscriptionManagement />} />
-        <Route path="settings" element={<AdminSettings />} />
-      </Route>
-
-      {/* Shop Panel — shopkeeper gets full access, staff gets permission-filtered */}
-      <Route path="/shop" element={<ProtectedRoute allowedRoles={['shopkeeper', 'staff']}><ShopLayout /></ProtectedRoute>}>
+      {/* Shop Portal — shopkeeper gets full access, staff gets permission-filtered */}
+      <Route path="/shop" element={<ProtectedRoute><ShopLayout /></ProtectedRoute>}>
         <Route index element={<ShopDashboard />} />
         <Route path="inventory" element={<ShopInventory />} />
         <Route path="billing" element={<ShopBilling />} />
