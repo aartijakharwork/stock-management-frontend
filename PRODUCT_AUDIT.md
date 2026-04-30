@@ -2,7 +2,7 @@
 
 > **Working reference for the frontend product effort.** Read the "How to use" and "Current status snapshot" first; the rest is the durable backlog.
 
-_Last updated: 2026-04-30 · Owner: Kumar Singh (Shopkeeper persona)_
+_Last updated: 2026-04-30 (Phase 1 finisher session) · Owner: Kumar Singh (Shopkeeper persona)_
 
 ---
 
@@ -22,40 +22,64 @@ When picking up next session: read the **status snapshot**, then check **next-up
 
 | Phase | Goal | Status |
 |---|---|---|
-| **Phase 1 — Trust pass** | "This looks real." Invoice numbers, GST, empty states, timestamps, notifications, onboarding. | **~75% done** |
+| **Phase 1 — Trust pass** | "This looks real." Invoice numbers, GST, empty states, timestamps, notifications, onboarding. | **~95% done** |
 | **Phase 2 — Depth** | "This can run my shop." Expenses, suppliers, ledger, returns, split-pay, advanced reports. | not started |
 | **Phase 3 — Power & polish** | "I want to upgrade." Cmd+K search, activity logs, scorecards, bulk imports, mobile-first refinements. | not started |
 
-**Next up (Phase 1 finishers):**
-1. Per-module Export buttons (Inventory, Customers, BillsHistory, Reports)
-2. Usage meters on Subscription page (`Bills 412/500`, `Items 87/100`, `Staff 3/5`) + trial-countdown banner
-3. Loading states for BillsHistory / Inventory / Customers lists (extend the existing skeleton pattern)
-4. Extend relative timestamps to Customers list ("last paid X ago")
-5. Receipt preview rendered in a thermal-printer style (monospace, dotted dividers)
+**Next up:** all Phase 1 finishers shipped this session — proceed to **Phase 2 — Depth**:
+1. Expenses module (CRUD page) — categories, recurring toggle, vendor field
+2. Suppliers / Vendors module
+3. Per-customer ledger (chronological khata-book view) + aging buckets
+4. Returns flow (credit note) + split payment UI
+5. P&L view (needs cost-price field on items first)
 
 ---
 
-## Done log (this session)
+## Done log
 
-### UI primitives created
+### Phase 1 finisher session (latest)
+
+**New utilities & primitives**
+- `src/utils/exporters.ts` — `exportCSV`, `exportExcel` (.xls via HTML-table blob), `exportPDF` (opens print-styled window for "Save as PDF") + shared `ExportColumn` type
+- `src/components/ui/ExportMenu.tsx` — generic dropdown button with CSV / Excel / PDF options, descriptions, record count, disabled state when no rows
+- `src/hooks/useRecentlyViewed.ts` — localStorage-backed (`shopmanager.recent`), 6-item rolling list, `track()` and `clear()`, cross-tab `storage` sync
+- `Skeleton.tsx` — added `TableSkeleton` (header + rows × columns grid) and `CardListSkeleton` (mobile)
+
+**Module changes**
+- **Inventory / Customers / BillsHistory / Reports** — `ExportMenu` wired into each (respects current filters). Reports export aggregates Summary, Bills, Payment methods, Top Items, Top Customers, Expense + Revenue by category into a single multi-section file.
+- **Inventory / Customers / BillsHistory** — added 700ms skeleton loading state on first mount; desktop uses `TableSkeleton`, mobile uses `CardListSkeleton`.
+- **Customers** — Pending column now also shows "Last paid X ago" (derived from latest paid bill per customer); mobile cards mirror the same. Removed dead `MessageSquare` import.
+- **Subscription (`src/modules/shop/Subscription.tsx`)** — full rebuild:
+  - Trial countdown banner (8 days demo, dismissible, persisted in `localStorage.shopmanager.trial.dismissed`) with "See plans" anchor
+  - "This month's usage" section with 3 `UsageMeter` cards: Bills, Items, Staff. Color-shifts emerald → amber (≥75%) → red (≥90%); shows `used / limit · pct%` + progress bar; "Unlimited" rendered with ∞ + emerald gradient
+  - Each `PlanCard` now displays its plan limits (Bills / Items / Staff) in a compact 3-up grid below the price
+  - Active plan card now shows a `Near plan limit` badge when any meter ≥ 90%
+  - Plan limits config: Monthly = 500/100/5, Half-Yearly = 2000/500/15, Yearly = unlimited
+- **Billing receipt modal** — replaced styled card with a thermal-printer paper preview (max-w 320px, monospace 11–12px, dashed/dotted dividers, double-rule above grand total, top + bottom printer-tear notches via radial-gradient SVG dots, `** UDHAAR **` ASCII flag, fixed-width Item / Qty / Price / Amt columns, footer disclaimers).
+- **Header (`src/components/layout/Header.tsx`)** — added system status chip (online indicator with ping animation + "synced X ago" relative time, ticking every 30s). Click opens a 4-row status panel (API / Billing / Cloud backup / WhatsApp) with `Sync now` action and version stamp. Listens to `online`/`offline` events. Compact dot-only variant on mobile.
+- **Dashboard (`src/modules/shop/Dashboard.tsx`)** — added "Continue where you left off" recently-viewed strip below quick actions: horizontal scroll, kind-tinted icon (Bill/Customer/Item), label + sublabel + relative time, "Clear" action. Hidden when empty. Tracking calls wired into BillsHistory (open detail), Customers (open detail), Inventory (open edit) via `useRecentlyViewed.track()`.
+
+### Earlier Phase 1 work
+
+#### UI primitives created
 - `src/components/ui/Skeleton.tsx` — `Skeleton` + `SkeletonText` (shimmer animated)
 - `src/components/ui/Spinner.tsx` — themed spinner with `size` (xs/sm/md/lg) and `tone` (primary/neutral/white) variants, optional label
 - `src/components/ui/EmptyState.tsx` — icon + title + description + action(s); `tone` (neutral/success/warning/info), `compact` mode
 
-### UI primitives extended
+#### UI primitives extended
 - `Modal` (`src/components/ui/Modal.tsx`) — added `loading` + `loadingLabel` props; renders centered themed Spinner instead of children when loading
 - `Badge` (`src/components/ui/Badge.tsx`) — accepts `className` (fixes pre-existing type errors at consumer sites)
 - `Table` (`src/components/ui/Table.tsx`) — accepts `emptyState?: ReactNode` for designed empty states
 
-### Utility functions
+#### Utility functions
 - `formatInvoiceNo(billId, dateIso)` → `INV-YYYY-MM-NNNN`
 - `gstBreakdown(totalInclusive)` → `{ taxable, cgst, sgst, gst }` (assumes 18% inclusive)
 - `formatRelativeTime(date)` → "2 min ago", "3 days ago", etc.
 
-### CSS additions
+#### CSS additions
 - `.skeleton-shimmer` keyframe + class (light + dark)
 
-### Module changes
+#### Module changes
 
 **Dashboard (`src/modules/shop/Dashboard.tsx`)**
 - Replaced 8-tile flat KPI grid with: Hero (Today's Sales + sparkline + delta chip) + 3 mini KPIs + 4-up secondary strip
@@ -129,13 +153,13 @@ When picking up next session: read the **status snapshot**, then check **next-up
 | 10 | Relative timestamps in BillsHistory | ✅ done | Both desktop rows and mobile cards |
 | 11 | Status badges — Settled variant | ✅ done | When udhaar bills get marked paid |
 | 12 | Bulk selection in Low Stock modal | ✅ done | Filter chips + select-all + bulk WhatsApp |
-| 13 | **Per-module Export buttons** (CSV/Excel/PDF dropdown on each table) | ⏳ pending | High visibility, low risk |
-| 14 | **Subscription usage meters + trial banner** | ⏳ pending | Bills used, items used, staff used; "X days left in trial" |
-| 15 | **Loading states for BillsHistory / Inventory / Customers** | ⏳ pending | Extend the existing skeleton pattern |
-| 16 | **Relative timestamps in Customers** ("last paid X ago") | ⏳ pending | Needs derived `lastPaymentDate` from bills |
-| 17 | **Thermal-printer style receipt preview** (monospace, dotted dividers) | ⏳ pending | Currently just a styled card |
-| 18 | **Recently viewed** strip on Dashboard ("Continue: Bill INV-…") | ⏳ pending | localStorage-backed |
-| 19 | **System status chip** in header ("All systems · synced 2 min ago") | ⏳ low | Easy trust win |
+| 13 | **Per-module Export buttons** (CSV/Excel/PDF dropdown on each table) | ✅ done | `ExportMenu` + `exporters.ts` · wired into Inventory/Customers/BillsHistory/Reports; respects current filters |
+| 14 | **Subscription usage meters + trial banner** | ✅ done | 3 meters (Bills/Items/Staff) with emerald→amber→red color shift + 8-day trial countdown banner with dismiss |
+| 15 | **Loading states for BillsHistory / Inventory / Customers** | ✅ done | New `TableSkeleton` + `CardListSkeleton` primitives, 700ms simulated fetch on mount |
+| 16 | **Relative timestamps in Customers** ("last paid X ago") | ✅ done | Derived `lastPaymentMap` from paid bills; shown in pending column + mobile cards |
+| 17 | **Thermal-printer style receipt preview** (monospace, dotted dividers) | ✅ done | 320px paper, monospace, dashed/dotted/double rules, top+bottom tear notches |
+| 18 | **Recently viewed** strip on Dashboard ("Continue: Bill INV-…") | ✅ done | `useRecentlyViewed` hook (localStorage), wired from BillsHistory/Customers/Inventory; 6-item rolling list with kind-tinted icons |
+| 19 | **System status chip** in header ("All systems · synced 2 min ago") | ✅ done | Online/offline aware (window events), pulse-ping animation, click-to-open status panel with sub-services + Sync now |
 | 20 | **Indian comma grouping** (₹1,23,456) globally | ⏳ low | Already done by `formatCurrency` Intl format — verify in low-priority audit |
 
 ---
@@ -246,7 +270,7 @@ When picking up next session: read the **status snapshot**, then check **next-up
 | 1 | Credit limit per customer + utilization bar | HIGH | ⏳ Phase 2 |
 | 2 | Aging buckets (0-30 / 31-60 / 61-90 / 90+) | HIGH | ⏳ Phase 2 |
 | 3 | Per-customer ledger view | HIGH | ⏳ Phase 2 |
-| 4 | Last payment date + relative time | HIGH | ⏳ Phase 1 finisher |
+| 4 | Last payment date + relative time | HIGH | ✅ |
 | 5 | Partial settlement UX (explicit) | HIGH | ⏳ |
 | 6 | Reminder history ("WhatsApp 2 days ago") | MEDIUM | ⏳ |
 | 7 | Customer tags / type (Wholesale, Retail, VIP) | MEDIUM | ⏳ |
@@ -267,7 +291,7 @@ When picking up next session: read the **status snapshot**, then check **next-up
 | 6 | Customer concentration (top-10 as % revenue) | LOW | ⏳ |
 | 7 | Hourly sales heatmap | MEDIUM | ⏳ Phase 2 |
 | 8 | Date-range comparison ("this week vs last") | MEDIUM | ⏳ Phase 2 |
-| 9 | Print / Export per report (PDF/Excel/CSV) | HIGH | ⏳ Phase 1 finisher |
+| 9 | Print / Export per report (PDF/Excel/CSV) | HIGH | ✅ |
 | 10 | Save-as-scheduled-email UI | LOW | ⏳ |
 
 ### E. Staff & Roles
@@ -287,8 +311,8 @@ When picking up next session: read the **status snapshot**, then check **next-up
 
 | # | Missing | Priority | Status |
 |---|---|---|---|
-| 1 | Trial countdown banner | HIGH | ⏳ Phase 1 finisher |
-| 2 | Usage meters per plan limit | HIGH | ⏳ Phase 1 finisher |
+| 1 | Trial countdown banner | HIGH | ✅ |
+| 2 | Usage meters per plan limit | HIGH | ✅ |
 | 3 | Locked-feature UX inline ("Upgrade to Pro") | HIGH | ⏳ Phase 3 |
 | 4 | Invoice / receipt history (PDF download) | HIGH | ⏳ Phase 3 |
 | 5 | Payment method card (Visa •••• 4242) | HIGH | ⏳ Phase 3 |
@@ -306,7 +330,7 @@ When picking up next session: read the **status snapshot**, then check **next-up
 | 2 | **Suppliers / Vendors** | HIGH | ⏳ Phase 2 |
 | 3 | **Notifications panel** | HIGH | ✅ done |
 | 4 | **Global search (Cmd+K)** | HIGH | ⏳ Phase 3 |
-| 5 | **Data Export center** (or per-module Export buttons) | MEDIUM | ⏳ Phase 1 finisher |
+| 5 | **Data Export center** (or per-module Export buttons) | MEDIUM | ✅ done · per-module ExportMenu (CSV/Excel/PDF) |
 | 6 | **Settings expansion** (sub-tabs: profile / template / tax / numbering / notifications / integrations / backup / danger) | HIGH | ⏳ Phase 2 |
 
 ---
@@ -316,7 +340,7 @@ When picking up next session: read the **status snapshot**, then check **next-up
 | Item | Priority | Status |
 |---|---|---|
 | Empty states designed | HIGH | ✅ (component built; applied to Inventory/Customers/BillsHistory/Staff/Billing/Dashboard modals) |
-| Skeleton loading states | HIGH | ✅ partial (Dashboard hero + chart only) — extend to other lists |
+| Skeleton loading states | HIGH | ✅ (Dashboard hero/chart + Inventory + Customers + BillsHistory via `TableSkeleton`/`CardListSkeleton`) |
 | Modal loading state | HIGH | ✅ |
 | Error states (inline banner with retry, field errors, network offline toast, search "did you mean") | MEDIUM | ⏳ Phase 2 |
 | Setup checklist / onboarding | HIGH | ✅ |
@@ -330,18 +354,18 @@ When picking up next session: read the **status snapshot**, then check **next-up
 
 | Item | Priority | Status |
 |---|---|---|
-| Timestamps everywhere ("X min ago") with absolute on hover | HIGH | ✅ partial (BillsHistory only) |
+| Timestamps everywhere ("X min ago") with absolute on hover | HIGH | ✅ (BillsHistory + Customers "last paid" + Notifications + Recently viewed strip + Header system status) |
 | Consistent status badges across modules | HIGH | ✅ partial (Paid/Udhaar/Settled in BillsHistory; need to standardize across Bills mobile, Receipt, etc.) |
 | Activity log per bill / customer / item | HIGH | ⏳ Phase 3 |
 | Audit fields ("Created by · Edited by") | MEDIUM | ⏳ Phase 3 |
 | Real-looking numbers (mixed amounts, not all round) | HIGH | ✅ already realistic in dummy data |
 | Invoice numbering | HIGH | ✅ |
-| Receipt preview thermal-printer style | HIGH | ⏳ Phase 1 finisher |
-| Version stamp in footer | LOW | ⏳ |
-| System status chip | LOW | ⏳ Phase 1 finisher |
+| Receipt preview thermal-printer style | HIGH | ✅ (320px paper, monospace, dashed/double rules, top+bottom tear notches) |
+| Version stamp in footer | LOW | ✅ partial (in System status panel) |
+| System status chip | LOW | ✅ |
 | Indian comma grouping (₹1,23,456) globally | HIGH | ✅ via `Intl.NumberFormat('en-IN')` |
 | Time-stamped notifications with read/unread divider | HIGH | ✅ |
-| Recently viewed strip | MEDIUM | ⏳ Phase 1 finisher |
+| Recently viewed strip | MEDIUM | ✅ (Dashboard "Continue where you left off") |
 
 ---
 
@@ -382,11 +406,33 @@ When picking up next session: read the **status snapshot**, then check **next-up
 8. **Modal loading prop** — replaces children with centered themed spinner. Caller toggles `loading={true}` after `setOpen(true)`. The shared API: `<Modal loading={isLoading} loadingLabel="Loading…">…</Modal>`.
 9. **Receipt content vs internal data** — receipt modal computes GST breakdown on the fly via `gstBreakdown(total)`; doesn't store CGST/SGST in the Bill object (keeps dummy data simple, derivation deterministic).
 10. **Notification panel** — currently 8 hardcoded sample notifications in Header.tsx. To persist read state across reloads, move state to a context + localStorage in Phase 1 finisher.
+11. **Export model** — every list page exposes `<ExportMenu>` with three formats. CSV uses BOM-prefixed UTF-8; Excel uses HTML-table-as-`.xls` (no extra dependency); PDF opens a new window with print-styled HTML and the user picks "Save as PDF" in the OS dialog. Filenames use `<base>-YYYYMMDD-HHMM.<ext>`. The export always uses the **filtered** rows (so users can export "current view"), with the row count shown in the dropdown header.
+12. **Skeleton loading durations** — list pages simulate 700ms; KPI tiles 800ms; charts 1400ms; modal fetches 700ms. Tunable from one place per concern.
+13. **Plan limits** — defined in `Subscription.tsx` `PLAN_LIMITS` map. `-1` = unlimited (renders ∞). When usage ≥ 75% the meter turns amber, ≥ 90% red + `Near plan limit` badge on the active plan card.
+14. **Recently viewed** — shared `useRecentlyViewed()` hook + localStorage (`shopmanager.recent`). Tracking is **manual** (call `track()` from the consumer) so we control which interactions count as "viewed" — currently: opening a Bill detail, opening a Customer detail, editing an Inventory item. Max 6 items, dedup by (kind,id), most-recent-first.
+15. **System status chip** — listens to native `online`/`offline` events. The "synced X ago" relative time re-renders every 30s via a tick state. The list of sub-services (API/Billing/Cloud backup/WhatsApp) is a static "all green" stub until we wire real health endpoints.
 
 ---
 
-## Files touched this session (for grep / blame reference)
+## Files touched (for grep / blame reference)
 
+### Phase 1 finisher session
+```
+src/utils/exporters.ts                     (created — CSV/Excel/PDF blob helpers)
+src/components/ui/ExportMenu.tsx           (created — generic export dropdown)
+src/hooks/useRecentlyViewed.ts             (created — localStorage-backed recent items)
+src/components/ui/Skeleton.tsx             (extended — TableSkeleton + CardListSkeleton)
+src/components/layout/Header.tsx           (system status chip + panel)
+src/modules/shop/Subscription.tsx          (rebuild — usage meters, trial banner, plan limits)
+src/modules/shop/Billing.tsx               (thermal-printer receipt preview)
+src/modules/shop/Dashboard.tsx             (recently viewed strip)
+src/modules/shop/Inventory.tsx             (ExportMenu + skeleton + recently-viewed track)
+src/modules/shop/Customers.tsx             (ExportMenu + skeleton + relative timestamps + recently-viewed track + MessageSquare cleanup)
+src/modules/shop/BillsHistory.tsx          (ExportMenu + skeleton + recently-viewed track)
+src/modules/shop/Reports.tsx               (ExportMenu wired + Toast/Download import cleanup)
+```
+
+### Earlier Phase 1 work
 ```
 src/components/ui/EmptyState.tsx           (created)
 src/components/ui/Skeleton.tsx             (created)

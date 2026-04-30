@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Eye, Phone, Printer, IndianRupee, Receipt, Clock, Banknote, Smartphone, CreditCard as CardIcon } from 'lucide-react';
 import { SearchInput } from '../../components/ui/SearchInput';
 import { Table } from '../../components/ui/Table';
@@ -8,18 +8,49 @@ import { Card, StatCard } from '../../components/ui/Card';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { ExportMenu } from '../../components/ui/ExportMenu';
+import { CardListSkeleton, TableSkeleton } from '../../components/ui/Skeleton';
 import { Link } from 'react-router-dom';
 import { bills as initialBills, customers } from '../../data/shop-dummy';
 import { formatCurrency, formatDate, formatInvoiceNo, gstBreakdown, formatRelativeTime } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { usePermissions } from '../../context/PermissionContext';
 import { usePagination } from '../../hooks/usePagination';
+import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
 import type { Bill } from '../../types';
+import type { ExportColumn } from '../../utils/exporters';
 
 type DateRange = '' | 'today' | '7d' | '30d';
 type StatusFilter = '' | 'paid' | 'udhaar';
 
 const TODAY = '2026-04-25';
+
+const billStatusLabel = (b: Bill) => b.isUdhaar && !b.paid ? 'Udhaar' : b.isUdhaar && b.paid ? 'Settled' : 'Paid';
+
+const BILL_EXPORT_COLUMNS: ExportColumn<Bill>[] = [
+  { header: 'Invoice No.', accessor: b => formatInvoiceNo(b.id, b.date) },
+  { header: 'Internal Ref', accessor: b => b.id },
+  { header: 'Date', accessor: b => formatDate(b.date) },
+  { header: 'Customer', accessor: b => b.customerName },
+  { header: 'Items', accessor: b => b.items.length },
+  { header: 'Subtotal (₹)', accessor: b => b.subtotal ?? b.total },
+  { header: 'Discount (₹)', accessor: b => b.discount ?? 0 },
+  {
+    header: 'Taxable (₹)',
+    accessor: b => gstBreakdown(b.total).taxable,
+  },
+  {
+    header: 'CGST (₹)',
+    accessor: b => gstBreakdown(b.total).cgst,
+  },
+  {
+    header: 'SGST (₹)',
+    accessor: b => gstBreakdown(b.total).sgst,
+  },
+  { header: 'Total (₹)', accessor: b => b.total },
+  { header: 'Payment', accessor: b => b.paymentMethod ?? (b.isUdhaar ? 'udhaar' : 'cash') },
+  { header: 'Status', accessor: b => billStatusLabel(b) },
+];
 
 const isWithinRange = (dateStr: string, range: DateRange) => {
   if (!range) return true;
@@ -44,9 +75,27 @@ export function ShopBillsHistory() {
   const [range, setRange] = useState<DateRange>('');
   const [status, setStatus] = useState<StatusFilter>('');
   const [selected, setSelected] = useState<Bill | null>(null);
+  const [loading, setLoading] = useState(true);
   const { addToast } = useToast();
   const { can } = usePermissions();
+  const { track } = useRecentlyViewed();
   const canEdit = can('bills', 'edit');
+
+  const openBill = (b: Bill) => {
+    setSelected(b);
+    track({
+      kind: 'bill',
+      id: b.id,
+      label: formatInvoiceNo(b.id, b.date),
+      sublabel: `${b.customerName} · ${formatCurrency(b.total)}`,
+      to: '/shop/bills',
+    });
+  };
+
+  useEffect(() => {
+    const t = setTimeout(() => setLoading(false), 700);
+    return () => clearTimeout(t);
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -92,9 +141,19 @@ export function ShopBillsHistory() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Bills History</h1>
-        <p className="mt-1 text-sm text-gray-500">View and manage all past transactions.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Bills History</h1>
+          <p className="mt-1 text-sm text-gray-500">View and manage all past transactions.</p>
+        </div>
+        <ExportMenu<Bill>
+          baseName="bills"
+          title="Bills history export"
+          meta={`${filtered.length} of ${bills.length} bills`}
+          columns={BILL_EXPORT_COLUMNS}
+          rows={filtered}
+          size="md"
+        />
       </div>
 
       {/* Summary stats */}
@@ -133,7 +192,7 @@ export function ShopBillsHistory() {
 
       {/* Desktop table */}
       <div className="hidden sm:block">
-        <Table
+        {loading ? <TableSkeleton rows={6} columns={6} /> : <Table
           columns={[
             { key: 'id', header: 'Invoice', render: b => <span className="font-mono text-xs text-gray-700 dark:text-gray-300">{formatInvoiceNo(b.id, b.date)}</span> },
             {
@@ -176,7 +235,7 @@ export function ShopBillsHistory() {
               header: '',
               className: 'text-right w-24',
               render: b => (
-                <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={e => { e.stopPropagation(); setSelected(b); }}>View</Button>
+                <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={e => { e.stopPropagation(); openBill(b); }}>View</Button>
               ),
             },
           ]}
@@ -200,7 +259,7 @@ export function ShopBillsHistory() {
               />
             )
           }
-          onRowClick={b => setSelected(b)}
+          onRowClick={openBill}
           page={pagination.page}
           totalPages={pagination.totalPages}
           total={pagination.total}
@@ -209,16 +268,16 @@ export function ShopBillsHistory() {
           onSort={pagination.toggleSort}
           startIndex={pagination.startIndex}
           endIndex={pagination.endIndex}
-        />
+        />}
       </div>
 
       {/* Mobile cards */}
       <div className="space-y-3 sm:hidden">
-        {pagination.pageData.map(b => (
+        {loading ? <CardListSkeleton rows={4} /> : pagination.pageData.map(b => (
           <button
             key={b.id}
             type="button"
-            onClick={() => setSelected(b)}
+            onClick={() => openBill(b)}
             className="block w-full text-left bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4"
           >
             <div className="flex items-center justify-between gap-3">
@@ -238,7 +297,7 @@ export function ShopBillsHistory() {
             </div>
           </button>
         ))}
-        {filtered.length === 0 && (
+        {!loading && filtered.length === 0 && (
           <Card>
             <EmptyState
               icon={<Receipt size={26} />}

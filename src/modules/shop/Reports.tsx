@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   TrendingUp, TrendingDown, IndianRupee, Clock, Users,
-  Banknote, Smartphone, CreditCard as CardIcon, Download, AlertTriangle,
+  Banknote, Smartphone, CreditCard as CardIcon, AlertTriangle,
 } from 'lucide-react';
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend,
@@ -9,11 +9,11 @@ import {
 } from 'recharts';
 import { StatCard, Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
-import { Button } from '../../components/ui/Button';
+import { ExportMenu } from '../../components/ui/ExportMenu';
 import { bills, customers, inventoryItems, expenses } from '../../data/shop-dummy';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, formatDate, formatInvoiceNo } from '../../utils/formatters';
 import { useTheme } from '../../context/ThemeContext';
-import { useToast } from '../../context/ToastContext';
+import type { ExportColumn } from '../../utils/exporters';
 
 type Period = '7d' | '30d' | 'all';
 
@@ -54,7 +54,6 @@ const PERIOD_OPTIONS: { value: Period; label: string }[] = [
 export function ShopReports() {
   const [period, setPeriod] = useState<Period>('7d');
   const { theme } = useTheme();
-  const { addToast } = useToast();
   const isDark = theme === 'dark';
 
   const tooltipStyle = isDark
@@ -151,6 +150,69 @@ export function ShopReports() {
 
   const avgBillValue = filteredBills.length > 0 ? Math.round(totalRevenue / filteredBills.length) : 0;
 
+  const periodLabel = PERIOD_OPTIONS.find(o => o.value === period)?.label ?? '';
+
+  const summaryRows = useMemo(() => [
+    { metric: 'Period', value: periodLabel },
+    { metric: 'Total Revenue', value: formatCurrency(totalRevenue) },
+    { metric: 'Total Collected', value: formatCurrency(totalCollected) },
+    { metric: 'Pending Dues', value: formatCurrency(totalPending) },
+    { metric: 'Total Expenses', value: formatCurrency(totalExpenses) },
+    { metric: 'Net Profit', value: formatCurrency(netProfit) },
+    { metric: 'Total Bills', value: String(filteredBills.length) },
+    { metric: 'Average Bill Value', value: formatCurrency(avgBillValue) },
+    { metric: 'Active Customers', value: String(topCustomers.length) },
+  ], [periodLabel, totalRevenue, totalCollected, totalPending, totalExpenses, netProfit, filteredBills.length, avgBillValue, topCustomers.length]);
+
+  const exportRows = useMemo(() => {
+    const lines: { section: string; label: string; value: string }[] = [];
+    summaryRows.forEach(r => lines.push({ section: 'Summary', label: r.metric, value: r.value }));
+
+    filteredBills.forEach(b => lines.push({
+      section: 'Bills',
+      label: `${formatInvoiceNo(b.id, b.date)} · ${formatDate(b.date)} · ${b.customerName}`,
+      value: formatCurrency(b.total),
+    }));
+
+    paymentBreakdown.forEach(p => lines.push({
+      section: 'Payment Methods',
+      label: p.name,
+      value: formatCurrency(p.value),
+    }));
+
+    topItems.forEach((it, idx) => lines.push({
+      section: 'Top Selling Items',
+      label: `#${idx + 1} ${it.name} · ${it.qty} units`,
+      value: formatCurrency(it.revenue),
+    }));
+
+    topCustomers.forEach((c, idx) => lines.push({
+      section: 'Top Customers',
+      label: `#${idx + 1} ${c.name} · ${c.bills} bills`,
+      value: formatCurrency(c.spent),
+    }));
+
+    expenseByCategory.forEach(e => lines.push({
+      section: 'Expenses by Category',
+      label: e.name,
+      value: formatCurrency(e.value),
+    }));
+
+    categoryRevenue.forEach(c => lines.push({
+      section: 'Revenue by Category',
+      label: c.name,
+      value: formatCurrency(c.value),
+    }));
+
+    return lines;
+  }, [summaryRows, filteredBills, paymentBreakdown, topItems, topCustomers, expenseByCategory, categoryRevenue]);
+
+  const exportColumns: ExportColumn<{ section: string; label: string; value: string }>[] = [
+    { header: 'Section', accessor: r => r.section },
+    { header: 'Item', accessor: r => r.label },
+    { header: 'Value', accessor: r => r.value },
+  ];
+
   return (
     <div className="space-y-6 w-full min-w-0">
       {/* Header */}
@@ -175,9 +237,14 @@ export function ShopReports() {
               </button>
             ))}
           </div>
-          <Button variant="secondary" size="sm" icon={<Download size={14} />} onClick={() => addToast('info', 'Export coming soon')}>
-            Export
-          </Button>
+          <ExportMenu
+            baseName={`report-${period}`}
+            title={`Reports · ${periodLabel}`}
+            meta={`Period: ${periodLabel} · ${filteredBills.length} bills`}
+            columns={exportColumns}
+            rows={exportRows}
+            size="sm"
+          />
         </div>
       </div>
 

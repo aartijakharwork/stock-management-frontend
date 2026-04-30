@@ -48,3 +48,67 @@ export function SkeletonText({ lines = 3, className = '' }: SkeletonTextProps) {
     </div>
   );
 }
+
+// Generic table skeleton — header + N rows × C columns. Used across list pages.
+interface TableSkeletonProps {
+  rows?: number;
+  columns?: number;
+  showAvatar?: boolean;
+}
+
+export function TableSkeleton({ rows = 6, columns = 4, showAvatar = false }: TableSkeletonProps) {
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden" aria-busy="true">
+      <div className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 px-4 py-3">
+        <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+          {Array.from({ length: columns }).map((_, i) => (
+            <Skeleton key={i} width={i === columns - 1 ? 60 : 80} height={10} rounded="sm" />
+          ))}
+        </div>
+      </div>
+      <ul className="divide-y divide-gray-200 dark:divide-gray-800">
+        {Array.from({ length: rows }).map((_, r) => (
+          <li key={r} className="px-4 py-3.5">
+            <div className="grid gap-4 items-center" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+              <div className="flex items-center gap-3 min-w-0">
+                {showAvatar && <Skeleton width={32} height={32} rounded="full" />}
+                <div className="space-y-1.5 min-w-0 flex-1">
+                  <Skeleton width="70%" height={12} rounded="sm" />
+                  <Skeleton width="45%" height={10} rounded="sm" />
+                </div>
+              </div>
+              {Array.from({ length: columns - 1 }).map((_, c) => (
+                <Skeleton
+                  key={c}
+                  width={c === columns - 2 ? '50%' : '80%'}
+                  height={12}
+                  rounded="sm"
+                />
+              ))}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// Mobile card skeleton — used alongside the table skeleton on small screens.
+export function CardListSkeleton({ rows = 4, showAvatar = true }: { rows?: number; showAvatar?: boolean }) {
+  return (
+    <ul className="space-y-3" aria-busy="true">
+      {Array.from({ length: rows }).map((_, i) => (
+        <li key={i} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            {showAvatar && <Skeleton width={40} height={40} rounded="full" />}
+            <div className="flex-1 space-y-1.5 min-w-0">
+              <Skeleton width="60%" height={12} rounded="sm" />
+              <Skeleton width="40%" height={10} rounded="sm" />
+            </div>
+            <Skeleton width={64} height={20} rounded="md" />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}

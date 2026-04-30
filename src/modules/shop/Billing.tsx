@@ -342,103 +342,162 @@ export function ShopBilling() {
         </div>
       )}
 
-      {/* Receipt modal */}
+      {/* Receipt modal — thermal printer style preview */}
       <Modal open={!!receipt} onClose={() => setReceipt(null)} title="Bill Receipt" size="md">
-        {receipt && (
-          <div className="space-y-5">
-            {/* Shop header */}
-            <div className="text-center pb-3 border-b border-dashed border-gray-200 dark:border-gray-700">
-              <p className="text-base font-bold text-gray-900 dark:text-white">Kumar Auto Parts</p>
-              <p className="text-xs text-gray-500">123, Main Market, Karol Bagh, New Delhi</p>
-              <p className="text-xs text-gray-500">Ph: 9876543200 · GSTIN: 07ABCDE1234F1Z5</p>
-              <p className="mt-1.5 text-[11px] font-semibold tracking-wider text-gray-700 dark:text-gray-300 uppercase">Tax Invoice</p>
-            </div>
+        {receipt && (() => {
+          const tax = gstBreakdown(receipt.total);
+          const itemCountTotal = receipt.items.reduce((s, it) => s + it.quantity, 0);
+          return (
+            <div className="space-y-4">
+              {/* Thermal paper preview */}
+              <div className="mx-auto bg-white text-gray-900 font-mono text-[12px] leading-tight max-w-[320px] shadow-md ring-1 ring-gray-200 dark:ring-gray-700">
+                {/* top notch (printer tear) */}
+                <div className="h-2 bg-[length:14px_8px] bg-[radial-gradient(circle_at_50%_100%,#fff_4px,#e5e7eb_5px)] dark:bg-[radial-gradient(circle_at_50%_100%,#fff_4px,#374151_5px)]" />
 
-            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs text-gray-500">Invoice No.</p>
-                  <p className="font-mono text-sm font-semibold text-gray-900 dark:text-white">{formatInvoiceNo(receipt.id, receipt.date)}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs text-gray-500">Date</p>
-                  <p className="text-sm text-gray-700 dark:text-gray-300">{formatDate(receipt.date)}</p>
-                </div>
-              </div>
-              <div className="mt-3 border-t border-gray-200 dark:border-gray-700 pt-3">
-                <p className="text-xs text-gray-500">Customer</p>
-                <p className="text-sm text-gray-900 dark:text-white font-medium">{receipt.customerName}</p>
-              </div>
-              <div className="mt-3 border-t border-gray-200 dark:border-gray-700 pt-3 space-y-2">
-                <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Items</p>
-                {receipt.items.map(it => (
-                  <div key={it.id} className="flex items-center justify-between gap-3 text-sm">
-                    <div>
-                      <p className="text-gray-900 dark:text-white">{it.name}</p>
-                      <p className="text-xs text-gray-500 tabular-nums">{it.quantity} × {formatCurrency(it.price)}</p>
+                <div className="px-4 py-3">
+                  {/* Shop block */}
+                  <div className="text-center">
+                    <p className="text-[14px] font-bold tracking-wide uppercase">Kumar Auto Parts</p>
+                    <p className="text-[10.5px]">123, Main Market, Karol Bagh</p>
+                    <p className="text-[10.5px]">New Delhi · Ph 9876543200</p>
+                    <p className="text-[10.5px]">GSTIN: 07ABCDE1234F1Z5</p>
+                  </div>
+
+                  <div className="my-2 border-t border-dashed border-gray-400" />
+
+                  <p className="text-center text-[11px] font-bold tracking-[0.18em] uppercase">Tax Invoice</p>
+
+                  <div className="my-2 border-t border-dashed border-gray-400" />
+
+                  {/* Invoice meta */}
+                  <div className="space-y-0.5 text-[11px]">
+                    <div className="flex justify-between">
+                      <span>Inv No</span>
+                      <span className="font-semibold">{formatInvoiceNo(receipt.id, receipt.date)}</span>
                     </div>
-                    <span className="text-gray-700 dark:text-gray-300 tabular-nums font-medium">{formatCurrency(it.price * it.quantity)}</span>
+                    <div className="flex justify-between">
+                      <span>Date</span>
+                      <span>{formatDate(receipt.date)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Customer</span>
+                      <span className="truncate max-w-[170px] text-right font-semibold">{receipt.customerName}</span>
+                    </div>
                   </div>
-                ))}
-              </div>
-              <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 space-y-1">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">Subtotal</span>
-                  <span className="text-gray-700 dark:text-gray-300 tabular-nums">{formatCurrency(receipt.subtotal || receipt.total)}</span>
-                </div>
-                {(receipt.discount ?? 0) > 0 && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-emerald-600 dark:text-emerald-400">Discount</span>
-                    <span className="text-emerald-600 dark:text-emerald-400 tabular-nums">–{formatCurrency(receipt.discount!)}</span>
+
+                  <div className="my-2 border-t border-dashed border-gray-400" />
+
+                  {/* Item header */}
+                  <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider">
+                    <span className="flex-1">Item</span>
+                    <span className="w-10 text-right">Qty</span>
+                    <span className="w-16 text-right">Price</span>
+                    <span className="w-16 text-right">Amt</span>
                   </div>
-                )}
-                {(() => {
-                  const tax = gstBreakdown(receipt.total);
-                  return (
+
+                  <div className="my-1 border-t border-dashed border-gray-400" />
+
+                  {/* Items */}
+                  <ul className="space-y-1.5">
+                    {receipt.items.map(it => (
+                      <li key={it.id} className="text-[11px]">
+                        <p className="truncate font-semibold">{it.name}</p>
+                        <div className="flex justify-between tabular-nums">
+                          <span className="flex-1 text-gray-500">&nbsp;</span>
+                          <span className="w-10 text-right">{it.quantity}</span>
+                          <span className="w-16 text-right">{it.price.toLocaleString('en-IN')}</span>
+                          <span className="w-16 text-right">{(it.price * it.quantity).toLocaleString('en-IN')}</span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="my-2 border-t border-dashed border-gray-400" />
+
+                  {/* Totals */}
+                  <div className="space-y-0.5 text-[11px] tabular-nums">
+                    <div className="flex justify-between">
+                      <span>Items</span><span>{itemCountTotal}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Subtotal</span>
+                      <span>{(receipt.subtotal || receipt.total).toLocaleString('en-IN')}</span>
+                    </div>
+                    {(receipt.discount ?? 0) > 0 && (
+                      <div className="flex justify-between">
+                        <span>Discount</span>
+                        <span>− {receipt.discount!.toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span>Taxable</span><span>{tax.taxable.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>CGST @ 9%</span><span>{tax.cgst.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>SGST @ 9%</span><span>{tax.sgst.toLocaleString('en-IN')}</span>
+                    </div>
+                  </div>
+
+                  <div className="my-2 border-t-2 border-double border-gray-700" />
+
+                  <div className="flex justify-between font-bold text-[14px] tabular-nums">
+                    <span>TOTAL</span>
+                    <span>₹ {receipt.total.toLocaleString('en-IN')}</span>
+                  </div>
+
+                  <div className="my-2 border-t border-dashed border-gray-400" />
+
+                  <div className="space-y-0.5 text-[11px]">
+                    <div className="flex justify-between">
+                      <span>Status</span>
+                      <span className="font-bold uppercase">
+                        {receipt.isUdhaar ? '** UDHAAR / UNPAID **' : 'PAID'}
+                      </span>
+                    </div>
+                    {receipt.paymentMethod && !receipt.isUdhaar && (
+                      <div className="flex justify-between">
+                        <span>Mode</span>
+                        <span className="uppercase">{receipt.paymentMethod}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {receipt.note && (
                     <>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-500">Taxable value</span>
-                        <span className="text-gray-700 dark:text-gray-300 tabular-nums">{formatCurrency(tax.taxable)}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-500">CGST @ 9%</span>
-                        <span className="text-gray-700 dark:text-gray-300 tabular-nums">{formatCurrency(tax.cgst)}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-500">SGST @ 9%</span>
-                        <span className="text-gray-700 dark:text-gray-300 tabular-nums">{formatCurrency(tax.sgst)}</span>
-                      </div>
+                      <div className="my-2 border-t border-dashed border-gray-400" />
+                      <p className="text-[10.5px] italic">Note: {receipt.note}</p>
                     </>
-                  );
-                })()}
-              </div>
-              <div className="mt-3 border-t-2 border-gray-200 dark:border-gray-700 pt-3 flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Total (incl. GST)</span>
-                <span className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{formatCurrency(receipt.total)}</span>
-              </div>
-              <div className="mt-2 flex items-center justify-between">
-                <span className="text-xs text-gray-500">Status</span>
-                {receipt.isUdhaar ? <Badge variant="warning">Pending Udhaar</Badge> : <Badge variant="success">Paid</Badge>}
-              </div>
-              {receipt.paymentMethod && !receipt.isUdhaar && (
-                <div className="mt-2 flex items-center justify-between">
-                  <span className="text-xs text-gray-500">Payment</span>
-                  <Badge variant="neutral" className="capitalize">{receipt.paymentMethod}</Badge>
+                  )}
+
+                  <div className="my-2 border-t border-dashed border-gray-400" />
+
+                  <div className="text-center text-[10.5px] space-y-0.5">
+                    <p className="font-semibold">~ Thank you, visit again ~</p>
+                    <p className="text-[9.5px]">Goods once sold are not returnable</p>
+                    <p className="text-[9.5px]">All disputes subject to Delhi jurisdiction</p>
+                  </div>
                 </div>
-              )}
-              {receipt.note && (
-                <div className="mt-3 border-t border-gray-200 dark:border-gray-700 pt-3">
-                  <p className="text-xs text-gray-500">Note</p>
-                  <p className="text-sm text-gray-700 dark:text-gray-300">{receipt.note}</p>
-                </div>
-              )}
+
+                {/* bottom notch */}
+                <div className="h-2 bg-[length:14px_8px] bg-[radial-gradient(circle_at_50%_0%,#fff_4px,#e5e7eb_5px)] dark:bg-[radial-gradient(circle_at_50%_0%,#fff_4px,#374151_5px)]" />
+              </div>
+
+              {/* Status chip below preview */}
+              <div className="flex justify-center">
+                {receipt.isUdhaar
+                  ? <Badge variant="warning">Saved as Udhaar — payment pending</Badge>
+                  : <Badge variant="success">Marked Paid</Badge>}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Button variant="secondary" size="lg" icon={<Printer size={16} />} onClick={() => window.print()}>Print</Button>
+                <Button variant="primary" size="lg" icon={<Receipt size={16} />} onClick={startNewBill}>New Bill</Button>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Button variant="secondary" size="lg" icon={<Printer size={16} />} onClick={() => window.print()}>Print</Button>
-              <Button variant="primary" size="lg" icon={<Receipt size={16} />} onClick={startNewBill}>New Bill</Button>
-            </div>
-          </div>
-        )}
+          );
+        })()}
       </Modal>
     </div>
   );

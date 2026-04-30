@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Plus, Phone, Eye, CircleDollarSign, Users, AlertCircle,
-  ShieldCheck, Share2, Pencil, MessageSquare,
+  ShieldCheck, Share2, Pencil,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { SearchInput } from '../../components/ui/SearchInput';
@@ -12,12 +12,16 @@ import { Input } from '../../components/ui/Input';
 import { Dropdown } from '../../components/ui/Dropdown';
 import { Card, StatCard } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { ExportMenu } from '../../components/ui/ExportMenu';
+import { CardListSkeleton, TableSkeleton } from '../../components/ui/Skeleton';
 import { customers as initialCustomers, bills as initialBills } from '../../data/shop-dummy';
-import { formatCurrency, formatDate, generateId } from '../../utils/formatters';
+import { formatCurrency, formatDate, formatRelativeTime, generateId } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { usePermissions } from '../../context/PermissionContext';
 import { usePagination } from '../../hooks/usePagination';
-import type { Customer } from '../../types';
+import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
+import type { Bill, Customer } from '../../types';
+import type { ExportColumn } from '../../utils/exporters';
 
 type DuesFilter = '' | 'with' | 'cleared';
 
@@ -28,6 +32,18 @@ function getSecuritySettings() {
 }
 
 const emptyForm = { name: '', phone: '', address: '' };
+
+function lastPaymentMap(bills: Bill[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const b of bills) {
+    if (!b.customerId || !b.paid) continue;
+    const prev = map.get(b.customerId);
+    if (!prev || new Date(b.date) > new Date(prev)) map.set(b.customerId, b.date);
+  }
+  return map;
+}
+
+const customerStatus = (c: Customer) => c.pendingAmount > 0 ? 'Pending' : 'Cleared';
 
 export function ShopCustomers() {
   const [customersList, setCustomers] = useState(initialCustomers);
@@ -44,8 +60,28 @@ export function ShopCustomers() {
   const [settleTarget, setSettleTarget] = useState<Customer | null>(null);
   const [securityInput, setSecurityInput] = useState('');
   const [securityError, setSecurityError] = useState('');
+  const [loading, setLoading] = useState(true);
   const { addToast } = useToast();
   const { can } = usePermissions();
+  const { track } = useRecentlyViewed();
+
+  const openDetail = (c: Customer) => {
+    setSelected(c);
+    track({
+      kind: 'customer',
+      id: c.id,
+      label: c.name,
+      sublabel: c.pendingAmount > 0
+        ? `Udhaar ${formatCurrency(c.pendingAmount)}`
+        : 'All cleared',
+      to: '/shop/customers',
+    });
+  };
+
+  useEffect(() => {
+    const t = setTimeout(() => setLoading(false), 700);
+    return () => clearTimeout(t);
+  }, []);
 
   const canAdd = can('customers', 'add');
   const canEdit = can('customers', 'edit');
@@ -73,6 +109,23 @@ export function ShopCustomers() {
   const totalPending = customersList.reduce((s, c) => s + c.pendingAmount, 0);
   const dueCount = customersList.filter(c => c.pendingAmount > 0).length;
   const clearedCount = customersList.filter(c => c.pendingAmount === 0).length;
+
+  const lastPayments = useMemo(() => lastPaymentMap(bills), [bills]);
+
+  const exportColumns = useMemo<ExportColumn<Customer>[]>(() => [
+    { header: 'Name', accessor: c => c.name },
+    { header: 'Phone', accessor: c => c.phone },
+    { header: 'Address', accessor: c => c.address || '' },
+    { header: 'Pending (₹)', accessor: c => c.pendingAmount },
+    { header: 'Status', accessor: c => customerStatus(c) },
+    {
+      header: 'Last paid',
+      accessor: c => {
+        const d = lastPayments.get(c.id);
+        return d ? formatDate(d) : '—';
+      },
+    },
+  ], [lastPayments]);
 
   const openAdd = () => { setForm(emptyForm); setFormError({}); setAddOpen(true); };
   const openEdit = (c: Customer) => {
@@ -170,7 +223,17 @@ export function ShopCustomers() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Customers</h1>
           <p className="mt-1 text-sm text-gray-500">Manage customers and track pending dues.</p>
         </div>
-        {canAdd && <Button variant="primary" icon={<Plus size={16} />} onClick={openAdd}>Add customer</Button>}
+        <div className="flex items-center gap-2">
+          <ExportMenu<Customer>
+            baseName="customers"
+            title="Customers export"
+            meta={`${filtered.length} of ${customersList.length} customers`}
+            columns={exportColumns}
+            rows={filtered}
+            size="md"
+          />
+          {canAdd && <Button variant="primary" icon={<Plus size={16} />} onClick={openAdd}>Add customer</Button>}
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -209,7 +272,7 @@ export function ShopCustomers() {
 
       {/* Desktop table */}
       <div className="hidden sm:block">
-        <Table
+        {loading ? <TableSkeleton rows={6} columns={4} showAvatar /> : <Table
           columns={[
             {
               key: 'name',
@@ -240,9 +303,21 @@ export function ShopCustomers() {
               key: 'pending',
               header: 'Pending',
               sortable: true,
-              render: c => c.pendingAmount > 0
-                ? <span className="font-semibold text-amber-600 dark:text-amber-400 tabular-nums">{formatCurrency(c.pendingAmount)}</span>
-                : <Badge variant="success">Cleared</Badge>,
+              render: c => {
+                const lastPaid = lastPayments.get(c.id);
+                return (
+                  <div>
+                    {c.pendingAmount > 0
+                      ? <span className="font-semibold text-amber-600 dark:text-amber-400 tabular-nums">{formatCurrency(c.pendingAmount)}</span>
+                      : <Badge variant="success">Cleared</Badge>}
+                    {lastPaid && (
+                      <p className="text-[11px] text-gray-400 mt-0.5" title={formatDate(lastPaid)}>
+                        Last paid {formatRelativeTime(lastPaid)}
+                      </p>
+                    )}
+                  </div>
+                );
+              },
             },
             {
               key: 'actions',
@@ -250,7 +325,7 @@ export function ShopCustomers() {
               className: 'text-right',
               render: c => (
                 <div className="flex items-center justify-end gap-1">
-                  <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={e => { e.stopPropagation(); setSelected(c); }}>View</Button>
+                  <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={e => { e.stopPropagation(); openDetail(c); }}>View</Button>
                   {canEdit && <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={e => { e.stopPropagation(); openEdit(c); }}>Edit</Button>}
                   {c.pendingAmount > 0 && (
                     <Button variant="ghost" size="sm" icon={<Share2 size={13} />} onClick={e => { e.stopPropagation(); sendWhatsAppReminder(c); }}>WA</Button>
@@ -282,7 +357,7 @@ export function ShopCustomers() {
               />
             )
           }
-          onRowClick={c => setSelected(c)}
+          onRowClick={openDetail}
           page={pagination.page}
           totalPages={pagination.totalPages}
           total={pagination.total}
@@ -291,14 +366,14 @@ export function ShopCustomers() {
           onSort={pagination.toggleSort}
           startIndex={pagination.startIndex}
           endIndex={pagination.endIndex}
-        />
+        />}
       </div>
 
       {/* Mobile cards */}
       <div className="space-y-3 sm:hidden">
-        {pagination.pageData.map(c => (
+        {loading ? <CardListSkeleton rows={4} showAvatar /> : pagination.pageData.map(c => (
           <div key={c.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
-            <button type="button" onClick={() => setSelected(c)} className="block w-full text-left">
+            <button type="button" onClick={() => openDetail(c)} className="block w-full text-left">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-semibold shrink-0">
                   {initial(c.name)}
@@ -311,6 +386,11 @@ export function ShopCustomers() {
                   {c.pendingAmount > 0
                     ? <p className="text-amber-600 dark:text-amber-400 font-semibold tabular-nums">{formatCurrency(c.pendingAmount)}</p>
                     : <Badge variant="success">Cleared</Badge>}
+                  {lastPayments.get(c.id) && (
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      paid {formatRelativeTime(lastPayments.get(c.id)!)}
+                    </p>
+                  )}
                 </div>
               </div>
             </button>

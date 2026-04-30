@@ -4,7 +4,7 @@ import {
   Receipt, Clock, AlertTriangle, ArrowRight, ArrowUpRight, ArrowDownRight, PackageX,
   Share2, CheckCircle2, Phone, ShoppingCart, Package, Users,
   TrendingUp, TrendingDown, BarChart3, Banknote, Smartphone, CreditCard as CardIcon,
-  Activity, RefreshCw, Check, X as XIcon, Sparkles, ChevronRight,
+  Activity, RefreshCw, Check, X as XIcon, Sparkles, ChevronRight, History, FileText, User,
 } from 'lucide-react';
 import {
   Area, AreaChart, CartesianGrid, Cell,
@@ -22,6 +22,7 @@ import { formatCurrency, formatInvoiceNo, formatRelativeTime } from '../../utils
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { useRecentlyViewed, type RecentKind } from '../../hooks/useRecentlyViewed';
 
 const TODAY = '2026-04-25';
 const YESTERDAY = '2026-04-24';
@@ -68,11 +69,18 @@ const CLEARED_TODAY = [
   { id: 'ct-2', name: 'Ravi Tiwari', phone: '9876543217', amount: 800 },
 ];
 
+const recentKindMeta: Record<RecentKind, { icon: typeof Receipt; tone: string; label: string }> = {
+  bill:     { icon: FileText, tone: 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400', label: 'Bill' },
+  customer: { icon: User,     tone: 'bg-purple-50 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400', label: 'Customer' },
+  item:     { icon: Package,  tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400', label: 'Item' },
+};
+
 export function ShopDashboard() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();
+  const { items: recentItems, clear: clearRecent } = useRecentlyViewed();
   const isDark = theme === 'dark';
 
   const [lowStockOpen, setLowStockOpen] = useState(false);
@@ -345,6 +353,50 @@ export function ShopDashboard() {
           </button>
         ))}
       </div>
+
+      {/* Recently viewed strip */}
+      {recentItems.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5">
+              <History size={14} className="text-gray-400" />
+              <h2 className="text-[12px] font-semibold uppercase tracking-wider text-gray-500">Continue where you left off</h2>
+            </div>
+            <button
+              onClick={clearRecent}
+              className="text-[11px] font-medium text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+            >
+              Clear
+            </button>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+            {recentItems.map(it => {
+              const meta = recentKindMeta[it.kind];
+              const Icon = meta.icon;
+              return (
+                <Link
+                  key={`${it.kind}-${it.id}`}
+                  to={it.to}
+                  className="shrink-0 flex items-center gap-2.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2 hover:border-emerald-300 dark:hover:border-emerald-500/40 hover:shadow-sm transition-all min-w-[200px] max-w-[280px] group"
+                >
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${meta.tone}`}>
+                    <Icon size={15} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{meta.label}</span>
+                      <span className="text-[10px] text-gray-400">· {formatRelativeTime(it.viewedAt)}</span>
+                    </div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">{it.label}</p>
+                    {it.sublabel && <p className="text-[11px] text-gray-500 truncate">{it.sublabel}</p>}
+                  </div>
+                  <ChevronRight size={14} className="text-gray-300 group-hover:text-emerald-600 transition-colors shrink-0" />
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Hero KPI + Mini KPIs */}
       {kpiLoading ? (

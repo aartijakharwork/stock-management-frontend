@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus, Pencil, Trash2, PackageX, AlertTriangle, Package, TrendingUp } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card, StatCard } from '../../components/ui/Card';
@@ -9,15 +9,31 @@ import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
 import { Dropdown } from '../../components/ui/Dropdown';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { ExportMenu } from '../../components/ui/ExportMenu';
+import { CardListSkeleton, TableSkeleton } from '../../components/ui/Skeleton';
 import { inventoryItems as initialItems } from '../../data/shop-dummy';
 import { formatCurrency, generateId } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { usePermissions } from '../../context/PermissionContext';
 import { usePagination } from '../../hooks/usePagination';
+import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
 import type { InventoryItem } from '../../types';
+import type { ExportColumn } from '../../utils/exporters';
 
 const DEFAULT_CATEGORIES = Array.from(new Set(initialItems.map(i => i.category))).sort();
 const emptyItem: Omit<InventoryItem, 'id'> = { name: '', price: 0, stock: 0, category: '', unit: 'piece' };
+
+const stockStatus = (stock: number) => stock === 0 ? 'Out of stock' : stock <= 5 ? 'Critical' : stock <= 10 ? 'Low' : 'In stock';
+
+const INVENTORY_EXPORT_COLUMNS: ExportColumn<InventoryItem>[] = [
+  { header: 'Name', accessor: i => i.name },
+  { header: 'Category', accessor: i => i.category },
+  { header: 'Unit', accessor: i => i.unit },
+  { header: 'Price (₹)', accessor: i => i.price },
+  { header: 'Stock', accessor: i => i.stock },
+  { header: 'Stock value (₹)', accessor: i => i.price * i.stock },
+  { header: 'Status', accessor: i => stockStatus(i.stock) },
+];
 
 function StockPill({ stock, unit }: { stock: number; unit: string }) {
   const label = `${stock} ${unit}${stock === 1 ? '' : 's'}`;
@@ -40,8 +56,15 @@ export function ShopInventory() {
   const [form, setForm] = useState<Omit<InventoryItem, 'id'>>(emptyItem);
   const [newCategory, setNewCategory] = useState('');
   const [addingCategory, setAddingCategory] = useState(false);
+  const [loading, setLoading] = useState(true);
   const { addToast } = useToast();
   const { can } = usePermissions();
+  const { track } = useRecentlyViewed();
+
+  useEffect(() => {
+    const t = setTimeout(() => setLoading(false), 700);
+    return () => clearTimeout(t);
+  }, []);
 
   const canAdd = can('inventory', 'add');
   const canEdit = can('inventory', 'edit');
@@ -90,6 +113,13 @@ export function ShopInventory() {
     setAddingCategory(false);
     setNewCategory('');
     setModalOpen(true);
+    track({
+      kind: 'item',
+      id: item.id,
+      label: item.name,
+      sublabel: `${item.category} · ${formatCurrency(item.price)} · ${item.stock} ${item.unit}${item.stock === 1 ? '' : 's'}`,
+      to: '/shop/inventory',
+    });
   };
 
   const handleAddCategory = () => {
@@ -131,7 +161,17 @@ export function ShopInventory() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Inventory</h1>
           <p className="mt-1 text-sm text-gray-500">Manage items, prices and stock levels.</p>
         </div>
-        {canAdd && <Button variant="primary" icon={<Plus size={16} />} onClick={openAdd}>Add item</Button>}
+        <div className="flex items-center gap-2">
+          <ExportMenu<InventoryItem>
+            baseName="inventory"
+            title="Inventory export"
+            meta={`${filtered.length} of ${items.length} items`}
+            columns={INVENTORY_EXPORT_COLUMNS}
+            rows={filtered}
+            size="md"
+          />
+          {canAdd && <Button variant="primary" icon={<Plus size={16} />} onClick={openAdd}>Add item</Button>}
+        </div>
       </div>
 
       {/* Stats */}
@@ -201,7 +241,16 @@ export function ShopInventory() {
         </div>
       </Card>
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <>
+          <div className="hidden sm:block">
+            <TableSkeleton rows={6} columns={5} />
+          </div>
+          <div className="sm:hidden">
+            <CardListSkeleton rows={5} showAvatar={false} />
+          </div>
+        </>
+      ) : filtered.length === 0 ? (
         <Card>
           {items.length === 0 ? (
             <EmptyState
