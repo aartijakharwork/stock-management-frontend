@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import {
   Plus, Phone, Eye, CircleDollarSign, Users, AlertCircle,
-  ShieldCheck, Share2, Pencil, BookOpen, AlertTriangle,
+  ShieldCheck, Share2, Pencil, BookOpen,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
@@ -25,16 +25,10 @@ import { usePagination } from '../../hooks/usePagination';
 import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
 import { customerAging, AGING_TONES, customerHealth, HEALTH_TONES } from '../../utils/customerAging';
 import type { AgingBucket } from '../../utils/customerAging';
-import type { Bill, Customer, CustomerTag } from '../../types';
+import type { Bill, Customer } from '../../types';
 import type { ExportColumn } from '../../utils/exporters';
 
 type DuesFilter = '' | 'with' | 'cleared' | AgingBucket;
-
-const TAG_TONES: Record<CustomerTag, { bg: string; text: string }> = {
-  wholesale: { bg: 'bg-purple-100 dark:bg-purple-500/20', text: 'text-purple-700 dark:text-purple-400' },
-  retail:    { bg: 'bg-blue-100 dark:bg-blue-500/20',     text: 'text-blue-700 dark:text-blue-400' },
-  vip:       { bg: 'bg-amber-100 dark:bg-amber-500/20',   text: 'text-amber-700 dark:text-amber-400' },
-};
 
 function getSecuritySettings() {
   const enabled = localStorage.getItem('shopmanager.security.enabled') === 'true';
@@ -46,16 +40,13 @@ interface CustomerFormState {
   name: string;
   phone: string;
   address: string;
-  gstin: string;
-  creditLimit: string;
   area: string;
   pincode: string;
   email: string;
-  tags: CustomerTag[];
 }
 
 const emptyForm: CustomerFormState = {
-  name: '', phone: '', address: '', gstin: '', creditLimit: '', area: '', pincode: '', email: '', tags: [],
+  name: '', phone: '', address: '', area: '', pincode: '', email: '',
 };
 
 function lastPaymentMap(bills: Bill[]): Map<string, string> {
@@ -75,7 +66,6 @@ export function ShopCustomers() {
   const [bills, setBills] = useState(initialBills);
   const [search, setSearch] = useState('');
   const [duesFilter, setDuesFilter] = useState<DuesFilter>('');
-  const [tagFilter, setTagFilter] = useState<CustomerTag | ''>('');
   const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Customer | null>(null);
@@ -126,17 +116,15 @@ export function ShopCustomers() {
       const matchesSearch = !q
         || c.name.toLowerCase().includes(q)
         || c.phone.includes(q)
-        || (c.gstin?.toLowerCase().includes(q) ?? false)
         || (c.area?.toLowerCase().includes(q) ?? false);
       const aging = agingMap.get(c.id);
       const matchesDues = !duesFilter
         || (duesFilter === 'with' && c.pendingAmount > 0)
         || (duesFilter === 'cleared' && c.pendingAmount === 0)
         || (aging && aging.bucket === duesFilter);
-      const matchesTag = !tagFilter || (c.tags?.includes(tagFilter) ?? false);
-      return matchesSearch && matchesDues && matchesTag;
+      return matchesSearch && matchesDues;
     });
-  }, [customersList, search, duesFilter, tagFilter, agingMap]);
+  }, [customersList, search, duesFilter, agingMap]);
 
   const pagination = usePagination({
     data: filtered,
@@ -173,10 +161,7 @@ export function ShopCustomers() {
   const exportColumns = useMemo<ExportColumn<Customer>[]>(() => [
     { header: 'Name', accessor: c => c.name },
     { header: 'Phone', accessor: c => c.phone },
-    { header: 'GSTIN', accessor: c => c.gstin || '' },
     { header: 'Address', accessor: c => c.address || '' },
-    { header: 'Tags', accessor: c => (c.tags ?? []).join('; ') },
-    { header: 'Credit limit (₹)', accessor: c => c.creditLimit ?? '' },
     { header: 'Pending (₹)', accessor: c => c.pendingAmount },
     { header: 'Aging', accessor: c => agingMap.get(c.id)?.bucket ?? '' },
     { header: 'Status', accessor: c => customerStatus(c) },
@@ -196,12 +181,9 @@ export function ShopCustomers() {
       name: c.name,
       phone: c.phone,
       address: c.address || '',
-      gstin: c.gstin || '',
-      creditLimit: c.creditLimit ? String(c.creditLimit) : '',
       area: c.area || '',
       pincode: c.pincode || '',
       email: c.email || '',
-      tags: c.tags ?? [],
     });
     setFormError({});
     setEditOpen(true);
@@ -215,16 +197,20 @@ export function ShopCustomers() {
     return Object.keys(errs).length === 0;
   };
 
-  const buildFromForm = (): Omit<Customer, 'id' | 'pendingAmount'> => ({
+  const buildFromForm = (): Omit<Customer, 'id' | 'pendingAmount' | 'gstin' | 'creditLimit' | 'tags'> & {
+    gstin?: undefined;
+    creditLimit?: undefined;
+    tags?: undefined;
+  } => ({
     name: form.name.trim(),
     phone: form.phone.trim(),
     address: form.address.trim() || undefined,
-    gstin: form.gstin.trim() || undefined,
-    creditLimit: form.creditLimit ? Number(form.creditLimit) : undefined,
     area: form.area.trim() || undefined,
     pincode: form.pincode.trim() || undefined,
     email: form.email.trim() || undefined,
-    tags: form.tags.length ? form.tags : undefined,
+    gstin: undefined,
+    creditLimit: undefined,
+    tags: undefined,
   });
 
   const handleSave = () => {
@@ -290,10 +276,6 @@ export function ShopCustomers() {
   );
 
   const initial = (name: string) => name.trim().charAt(0).toUpperCase() || '?';
-
-  const toggleTag = (t: CustomerTag) => {
-    setForm(f => ({ ...f, tags: f.tags.includes(t) ? f.tags.filter(x => x !== t) : [...f.tags, t] }));
-  };
 
   const toggleSelectCust = (id: string) => {
     setSelectedIds(prev => {
@@ -388,7 +370,7 @@ export function ShopCustomers() {
       <Card>
         <div className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-[1fr_200px]">
-            <SearchInput placeholder="Search by name, phone, GSTIN, area..." value={search} onSearch={setSearch} />
+            <SearchInput placeholder="Search by name, phone, area..." value={search} onSearch={setSearch} />
             <Dropdown
               options={[
                 { label: 'All customers', value: '' },
@@ -402,27 +384,6 @@ export function ShopCustomers() {
               value={duesFilter}
               onChange={e => setDuesFilter(e.target.value as DuesFilter)}
             />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setTagFilter('')}
-              className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${
-                !tagFilter ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/50 dark:text-emerald-400' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
-              }`}
-            >All tags</button>
-            {(['wholesale', 'retail', 'vip'] as CustomerTag[]).map(t => {
-              const tone = TAG_TONES[t];
-              const active = tagFilter === t;
-              return (
-                <button
-                  key={t}
-                  onClick={() => setTagFilter(active ? '' : t)}
-                  className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors capitalize ${
-                    active ? `${tone.bg} ${tone.text} border-current` : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
-                  }`}
-                >{t}</button>
-              );
-            })}
           </div>
         </div>
       </Card>
@@ -480,13 +441,8 @@ export function ShopCustomers() {
                     <div>
                       <div className="flex items-center gap-1.5">
                         <span className="font-medium text-gray-900 dark:text-white"><Highlight text={c.name} query={search} /></span>
-                        {c.tags?.map(tag => {
-                          const tone = TAG_TONES[tag];
-                          return <span key={tag} className={`text-[10px] font-medium uppercase px-1.5 py-0.5 rounded ${tone.bg} ${tone.text}`}>{tag}</span>;
-                        })}
                       </div>
                       {c.address && <p className="text-xs text-gray-400 truncate max-w-[180px]">{c.address}</p>}
-                      {c.gstin && <p className="text-[11px] font-mono text-gray-400">{c.gstin}</p>}
                     </div>
                   </div>
                 );
@@ -508,7 +464,6 @@ export function ShopCustomers() {
               render: c => {
                 const lastPaid = lastPayments.get(c.id);
                 const aging = agingMap.get(c.id);
-                const util = c.creditLimit && c.creditLimit > 0 ? c.pendingAmount / c.creditLimit : null;
                 return (
                   <div>
                     {c.pendingAmount > 0 ? (
@@ -522,14 +477,6 @@ export function ShopCustomers() {
                       </div>
                     ) : (
                       <Badge variant="success">Cleared</Badge>
-                    )}
-                    {util != null && (
-                      <div className="mt-1 flex items-center gap-1.5">
-                        <div className="w-20 h-1 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-                          <div className={`h-full ${util > 1 ? 'bg-red-500' : util > 0.8 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, util * 100)}%` }} />
-                        </div>
-                        <span className="text-[10px] text-gray-500 tabular-nums">{Math.round(util * 100)}%</span>
-                      </div>
                     )}
                     {lastPaid && (
                       <p className="text-[11px] text-gray-400 mt-0.5" title={formatDate(lastPaid)}>
@@ -574,7 +521,7 @@ export function ShopCustomers() {
                 icon={<Users size={28} />}
                 title="No customers match your filters"
                 description="Try a different search term or clear the dues filter."
-                action={<Button variant="secondary" size="sm" onClick={() => { setSearch(''); setDuesFilter(''); setTagFilter(''); }}>Clear filters</Button>}
+                action={<Button variant="secondary" size="sm" onClick={() => { setSearch(''); setDuesFilter(''); }}>Clear filters</Button>}
                 compact
               />
             )
@@ -608,10 +555,6 @@ export function ShopCustomers() {
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-gray-900 dark:text-white truncate flex items-center gap-1.5">
                       <Highlight text={c.name} query={search} />
-                      {c.tags?.[0] && (() => {
-                        const tone = TAG_TONES[c.tags[0]];
-                        return <span className={`text-[10px] font-medium uppercase px-1.5 py-0.5 rounded ${tone.bg} ${tone.text}`}>{c.tags[0]}</span>;
-                      })()}
                     </p>
                     <a href={`tel:${c.phone}`} onClick={e => e.stopPropagation()} className="text-xs text-gray-500 flex items-center gap-1"><Phone size={11} /> {c.phone}</a>
                   </div>
@@ -643,7 +586,6 @@ export function ShopCustomers() {
           form={form}
           formError={formError}
           setForm={setForm}
-          toggleTag={toggleTag}
           onCancel={() => setAddOpen(false)}
           onSave={handleSave}
           saveLabel="Save customer"
@@ -656,7 +598,6 @@ export function ShopCustomers() {
           form={form}
           formError={formError}
           setForm={setForm}
-          toggleTag={toggleTag}
           onCancel={() => setEditOpen(false)}
           onSave={handleEditSave}
           saveLabel="Save changes"
@@ -674,7 +615,6 @@ export function ShopCustomers() {
               <div className="min-w-0 flex-1">
                 <p className="text-lg font-semibold text-gray-900 dark:text-white">{selected.name}</p>
                 <p className="text-sm text-gray-500 flex items-center gap-1.5"><Phone size={13} /> <a href={`tel:${selected.phone}`} className="hover:text-emerald-600 dark:hover:text-emerald-400">{selected.phone}</a></p>
-                {selected.gstin && <p className="text-xs font-mono text-gray-400 mt-0.5">GSTIN {selected.gstin}</p>}
                 {selected.address && <p className="text-xs text-gray-400 mt-1">{selected.address}</p>}
               </div>
               <div className="text-right shrink-0">
@@ -684,33 +624,6 @@ export function ShopCustomers() {
                 <p className="text-xs text-gray-500 mt-1">Total spent: {formatCurrency(customerTotalSpent)}</p>
               </div>
             </div>
-
-            {/* Credit limit utilization */}
-            {selected.creditLimit && selected.creditLimit > 0 && (
-              <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-800">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Credit utilization</span>
-                  <span className="text-xs text-gray-500 tabular-nums">
-                    {formatCurrency(selected.pendingAmount)} / {formatCurrency(selected.creditLimit)}
-                  </span>
-                </div>
-                {(() => {
-                  const util = selected.pendingAmount / selected.creditLimit;
-                  return (
-                    <>
-                      <div className="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-                        <div className={`h-full transition-all ${util > 1 ? 'bg-red-500' : util > 0.8 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, util * 100)}%` }} />
-                      </div>
-                      {util > 1 && (
-                        <p className="mt-2 text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
-                          <AlertTriangle size={12} /> Over limit by {formatCurrency(selected.pendingAmount - selected.creditLimit)}
-                        </p>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-            )}
 
             <div className="flex gap-2 flex-wrap">
               <Button variant="secondary" size="sm" icon={<BookOpen size={13} />} onClick={() => { setSelected(null); navigate(`/shop/customers/${selected.id}`); }}>Open ledger</Button>
@@ -787,13 +700,12 @@ interface CustomerFormProps {
   form: CustomerFormState;
   formError: { name?: string; phone?: string };
   setForm: React.Dispatch<React.SetStateAction<CustomerFormState>>;
-  toggleTag: (t: CustomerTag) => void;
   onCancel: () => void;
   onSave: () => void;
   saveLabel: string;
 }
 
-function CustomerForm({ form, formError, setForm, toggleTag, onCancel, onSave, saveLabel }: CustomerFormProps) {
+function CustomerForm({ form, formError, setForm, onCancel, onSave, saveLabel }: CustomerFormProps) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -805,33 +717,6 @@ function CustomerForm({ form, formError, setForm, toggleTag, onCancel, onSave, s
       <div className="grid grid-cols-2 gap-4">
         <Input label="Area / Locality" value={form.area} onChange={e => setForm(f => ({ ...f, area: e.target.value }))} placeholder="Karol Bagh" />
         <Input label="Pin code" value={form.pincode} onChange={e => setForm(f => ({ ...f, pincode: e.target.value }))} placeholder="6-digit" />
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <Input label="GSTIN (B2B)" value={form.gstin} onChange={e => setForm(f => ({ ...f, gstin: e.target.value }))} placeholder="07AAACX1234X1Z5" />
-        <Input label="Credit limit (₹)" type="number" value={form.creditLimit} onChange={e => setForm(f => ({ ...f, creditLimit: e.target.value }))} placeholder="0 = no limit" />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tags</label>
-        <div className="flex flex-wrap gap-2">
-          {(['wholesale', 'retail', 'vip'] as CustomerTag[]).map(t => {
-            const tone = TAG_TONES[t];
-            const active = form.tags.includes(t);
-            return (
-              <button
-                type="button"
-                key={t}
-                onClick={() => toggleTag(t)}
-                className={`text-xs px-3 py-1.5 rounded-full border transition-colors capitalize ${
-                  active
-                    ? `${tone.bg} ${tone.text} border-current`
-                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
-                }`}
-              >
-                {t}
-              </button>
-            );
-          })}
-        </div>
       </div>
       <div className="flex justify-end gap-2 pt-2">
         <Button variant="secondary" onClick={onCancel}>Cancel</Button>

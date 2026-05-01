@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   Receipt, Clock, AlertTriangle, ArrowRight, ArrowUpRight, ArrowDownRight, PackageX,
   Share2, CheckCircle2, Phone, ShoppingCart, Package, Users,
-  TrendingUp, TrendingDown, BarChart3, Banknote, Smartphone, CreditCard as CardIcon,
+  TrendingUp, TrendingDown, Banknote, Smartphone, CreditCard as CardIcon,
   Activity, RefreshCw, Check, X as XIcon, Sparkles, ChevronRight, History, FileText, User,
 } from 'lucide-react';
 import {
@@ -17,12 +17,13 @@ import { Modal } from '../../components/ui/Modal';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { Spinner } from '../../components/ui/Spinner';
 import { EmptyState } from '../../components/ui/EmptyState';
-import { bills, customers, inventoryItems, expenses } from '../../data/shop-dummy';
+import { bills, customers, expenses } from '../../data/shop-dummy';
 import { formatCurrency, formatInvoiceNo, formatRelativeTime } from '../../utils/formatters';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { useRecentlyViewed, type RecentKind } from '../../hooks/useRecentlyViewed';
+import { useShopCatalog } from '../../context/ShopCatalogContext';
 
 const TODAY = '2026-04-25';
 const YESTERDAY = '2026-04-24';
@@ -78,6 +79,7 @@ const recentKindMeta: Record<RecentKind, { icon: typeof Receipt; tone: string; l
 export function ShopDashboard() {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { items: inventoryItems } = useShopCatalog();
   const { addToast } = useToast();
   const navigate = useNavigate();
   const { items: recentItems, clear: clearRecent } = useRecentlyViewed();
@@ -154,8 +156,8 @@ export function ShopDashboard() {
 
   const pendingUdhaar = useMemo(() => customers.reduce((s, c) => s + c.pendingAmount, 0), []);
   const pendingCustomers = useMemo(() => customers.filter(c => c.pendingAmount > 0), []);
-  const lowStockItems = useMemo(() => inventoryItems.filter(i => i.stock <= 10).sort((a, b) => a.stock - b.stock), []);
-  const outOfStockItems = useMemo(() => inventoryItems.filter(i => i.stock === 0), []);
+  const lowStockItems = useMemo(() => inventoryItems.filter(i => i.stock <= 10).sort((a, b) => a.stock - b.stock), [inventoryItems]);
+  const outOfStockItems = useMemo(() => inventoryItems.filter(i => i.stock === 0), [inventoryItems]);
 
   const totalExpensesToday = useMemo(() => expenses.filter(e => e.date === TODAY).reduce((s, e) => s + e.amount, 0), []);
 
@@ -180,7 +182,7 @@ export function ShopDashboard() {
     const tally = new Map<string, number>();
     for (const i of inventoryItems) tally.set(i.category, (tally.get(i.category) || 0) + i.price * i.stock);
     return Array.from(tally.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 6);
-  }, []);
+  }, [inventoryItems]);
 
   const paymentBreakdown = useMemo(() => {
     const byMethod = { Cash: 0, UPI: 0, Card: 0 };
@@ -331,27 +333,54 @@ export function ShopDashboard() {
         );
       })()}
 
-      {/* Quick Actions — compact pill row */}
-      <div className="flex flex-wrap gap-2">
-        {[
-          { label: 'New Bill', icon: ShoppingCart, to: '/shop/billing', primary: true },
-          { label: 'Add Item', icon: Package, to: '/shop/inventory' },
-          { label: 'Add Customer', icon: Users, to: '/shop/customers' },
-          { label: 'View Reports', icon: BarChart3, to: '/shop/reports' },
-        ].map(({ label, icon: Icon, to, primary }) => (
-          <button
-            key={label}
-            onClick={() => navigate(to)}
-            className={
-              primary
-                ? 'inline-flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 transition-colors'
-                : 'inline-flex items-center gap-2 rounded-full border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-700 hover:text-gray-900 dark:hover:text-white transition-colors'
-            }
-          >
-            <Icon size={15} />
-            {label}
-          </button>
-        ))}
+      {/* Primary actions — three big tap targets the shopkeeper does daily.
+          Create Bill is the hero; Add Item and Mark Payment are equal-weight
+          secondary actions. Sized for thumbs on mobile. */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <button
+          onClick={() => navigate('/shop/billing')}
+          className="group relative overflow-hidden flex items-center gap-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 px-5 py-4 text-left text-white shadow-md hover:shadow-lg transition-all active:scale-[0.98]"
+        >
+          <div className="w-12 h-12 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
+            <ShoppingCart size={22} strokeWidth={2.2} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-emerald-100/90">Sale</p>
+            <p className="text-base font-bold leading-tight">Create Bill</p>
+            <p className="text-[11px] text-emerald-100/80 mt-0.5">Fastest way to record a sale</p>
+          </div>
+          <ArrowRight size={18} className="text-white/70 group-hover:translate-x-0.5 transition-transform shrink-0" />
+        </button>
+
+        <button
+          onClick={() => navigate('/shop/inventory')}
+          className="group flex items-center gap-3 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-emerald-300 dark:hover:border-emerald-500/40 px-5 py-4 text-left transition-all active:scale-[0.98] hover:shadow-md"
+        >
+          <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
+            <Package size={22} strokeWidth={2.2} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-gray-400">Stock</p>
+            <p className="text-base font-bold text-gray-900 dark:text-white leading-tight">Add Product</p>
+            <p className="text-[11px] text-gray-500 mt-0.5">New item or update stock</p>
+          </div>
+          <ChevronRight size={18} className="text-gray-300 dark:text-gray-600 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all shrink-0" />
+        </button>
+
+        <button
+          onClick={() => navigate('/shop/customers')}
+          className="group flex items-center gap-3 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-emerald-300 dark:hover:border-emerald-500/40 px-5 py-4 text-left transition-all active:scale-[0.98] hover:shadow-md"
+        >
+          <div className="w-12 h-12 rounded-xl bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
+            <Users size={22} strokeWidth={2.2} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-gray-400">Udhaar</p>
+            <p className="text-base font-bold text-gray-900 dark:text-white leading-tight">Mark Payment</p>
+            <p className="text-[11px] text-gray-500 mt-0.5">Settle pending customer dues</p>
+          </div>
+          <ChevronRight size={18} className="text-gray-300 dark:text-gray-600 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all shrink-0" />
+        </button>
       </div>
 
       {/* Recently viewed strip */}

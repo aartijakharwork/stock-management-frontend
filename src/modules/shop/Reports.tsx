@@ -15,11 +15,12 @@ import { Toggle } from '../../components/ui/Toggle';
 import { Modal } from '../../components/ui/Modal';
 import { JargonHint } from '../../components/ui/JargonHint';
 import { ExportMenu } from '../../components/ui/ExportMenu';
-import { bills, customers, inventoryItems, expenses } from '../../data/shop-dummy';
+import { bills, customers, expenses } from '../../data/shop-dummy';
 import { formatCurrency, formatDate, formatInvoiceNo } from '../../utils/formatters';
 import { useTheme } from '../../context/ThemeContext';
+import { useShopCatalog } from '../../context/ShopCatalogContext';
 import type { ExportColumn } from '../../utils/exporters';
-import type { Bill } from '../../types';
+import type { Bill, InventoryItem } from '../../types';
 
 type Period = '7d' | '30d' | 'all';
 
@@ -58,6 +59,7 @@ const PERIOD_OPTIONS: { value: Period; label: string }[] = [
 ];
 
 export function ShopReports() {
+  const { items: inventoryItems } = useShopCatalog();
   const [period, setPeriod] = useState<Period>('7d');
   const [compareMode, setCompareMode] = useState(false);
   const [drillDown, setDrillDown] = useState<{ title: string; bills: Bill[] } | null>(null);
@@ -154,7 +156,7 @@ export function ShopReports() {
       tally.set(cat, (tally.get(cat) || 0) + it.price * it.quantity);
     }
     return Array.from(tally.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 6);
-  }, [filteredBills]);
+  }, [filteredBills, inventoryItems]);
 
   const avgBillValue = filteredBills.length > 0 ? Math.round(totalRevenue / filteredBills.length) : 0;
 
@@ -169,7 +171,7 @@ export function ShopReports() {
       }
     }
     return s;
-  }, [filteredBills]);
+  }, [filteredBills, inventoryItems]);
   const grossProfit = totalRevenue - cogs;
   const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
   const netProfitWithCogs = grossProfit - totalExpenses;
@@ -220,7 +222,7 @@ export function ShopReports() {
       }
     }
     const today = TODAY.getTime();
-    const buckets: { days: number; items: typeof inventoryItems }[] = [
+    const buckets: { days: number; items: InventoryItem[] }[] = [
       { days: 30, items: [] },
       { days: 60, items: [] },
       { days: 90, items: [] },
@@ -232,7 +234,7 @@ export function ShopReports() {
       for (const b of buckets) if (daysSince > b.days) b.items.push(item);
     }
     return { buckets, lastSold };
-  }, []);
+  }, [inventoryItems, bills]);
 
   // Hourly heatmap — synthesize plausible hourly distribution
   const hourlyHeatmap = useMemo(() => {

@@ -12,10 +12,11 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { ExportMenu } from '../../components/ui/ExportMenu';
 import { CardListSkeleton, TableSkeleton } from '../../components/ui/Skeleton';
 import { Highlight } from '../../components/ui/Highlight';
-import { suppliers as initialSuppliers, purchases, inventoryItems } from '../../data/shop-dummy';
+import { suppliers as initialSuppliers, purchases } from '../../data/shop-dummy';
 import { formatCurrency, formatDate, generateId, formatRelativeTime } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { usePermissions } from '../../context/PermissionContext';
+import { useShopCatalog } from '../../context/ShopCatalogContext';
 import { usePagination } from '../../hooks/usePagination';
 import type { Supplier, Purchase } from '../../types';
 import type { ExportColumn } from '../../utils/exporters';
@@ -296,6 +297,7 @@ interface SupplierLedgerModalProps {
 }
 
 function SupplierLedgerModal({ supplier, onClose }: SupplierLedgerModalProps) {
+  const { items: inventoryItems } = useShopCatalog();
   const supplierPurchases = purchases.filter(p => p.supplierId === supplier.id || p.supplier === supplier.name);
   const linkedItems = inventoryItems.filter(i => i.supplierId === supplier.id);
   const totalPurchased = supplierPurchases.reduce((s, p) => s + p.total, 0);

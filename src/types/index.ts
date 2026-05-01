@@ -14,6 +14,12 @@ export interface AuthUser {
   staffRoleId?: string;
 }
 
+/** User-defined product category for inventory (name is stored on each {@link InventoryItem}). */
+export interface ProductCategory {
+  id: string;
+  name: string;
+}
+
 export type AppModule = 'dashboard' | 'inventory' | 'billing' | 'customers' | 'bills' | 'staff' | 'roles' | 'settings' | 'subscription' | 'expenses' | 'suppliers';
 export type ModuleAction = 'view' | 'add' | 'edit' | 'delete';
 

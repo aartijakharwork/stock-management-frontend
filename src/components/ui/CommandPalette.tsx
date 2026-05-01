@@ -15,14 +15,15 @@ import {
   UserCog,
   CreditCard,
   Command as CommandIcon,
+  Tags,
 } from 'lucide-react';
 import {
   customers,
-  inventoryItems,
   bills,
   suppliers,
 } from '../../data/shop-dummy';
 import { formatCurrency } from '../../utils/formatters';
+import { useShopCatalog } from '../../context/ShopCatalogContext';
 
 interface CmdItem {
   id: string;
@@ -38,6 +39,7 @@ const NAV_ITEMS: CmdItem[] = [
   { id: 'nav-dashboard', label: 'Dashboard', icon: <LayoutDashboard size={16} />, to: '/shop', group: 'Navigate' },
   { id: 'nav-billing', label: 'New Bill', icon: <ShoppingCart size={16} />, to: '/shop/billing', group: 'Navigate' },
   { id: 'nav-inventory', label: 'Inventory', icon: <Package size={16} />, to: '/shop/inventory', group: 'Navigate' },
+  { id: 'nav-categories', label: 'Categories', icon: <Tags size={16} />, to: '/shop/settings?tab=categories', group: 'Navigate' },
   { id: 'nav-customers', label: 'Customers', icon: <Users size={16} />, to: '/shop/customers', group: 'Navigate' },
   { id: 'nav-bills', label: 'Bills history', icon: <ReceiptText size={16} />, to: '/shop/bills', group: 'Navigate' },
   { id: 'nav-expenses', label: 'Expenses', icon: <Wallet size={16} />, to: '/shop/expenses', group: 'Navigate' },
@@ -50,6 +52,7 @@ const NAV_ITEMS: CmdItem[] = [
 ];
 
 export function CommandPalette() {
+  const { items: inventoryItems } = useShopCatalog();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlighted, setHighlighted] = useState(0);
@@ -114,7 +117,7 @@ export function CommandPalette() {
       keywords: `${s.name} ${s.phone} ${s.gstin ?? ''}`,
     }));
     return [...NAV_ITEMS, ...customerItems, ...itemRows, ...billRows, ...supplierRows];
-  }, []);
+  }, [inventoryItems]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Plus, ShoppingCart, Users, Package, Receipt, X } from 'lucide-react';
+import { MVP_MODE } from '../../config/mvp';
 
 export function MobileFAB() {
   const [open, setOpen] = useState(false);
@@ -18,6 +19,23 @@ export function MobileFAB() {
   }, [open]);
 
   if (hidden) return null;
+
+  // In MVP mode the FAB is a single, dedicated "+ New Bill" button — no
+  // expansion menu. Outside MVP mode it expands to four shortcuts.
+  if (MVP_MODE) {
+    return (
+      <div className="lg:hidden fixed right-4 bottom-20 z-40">
+        <button
+          onClick={() => navigate('/shop/billing')}
+          aria-label="New bill"
+          className="h-14 pl-4 pr-5 rounded-full text-white shadow-lg flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 transition-all"
+        >
+          <ShoppingCart size={20} />
+          <span className="text-sm font-semibold">New Bill</span>
+        </button>
+      </div>
+    );
+  }
 
   const actions = [
     { icon: <ShoppingCart size={16} />, label: 'New bill', to: '/shop/billing', tone: 'bg-emerald-600' },

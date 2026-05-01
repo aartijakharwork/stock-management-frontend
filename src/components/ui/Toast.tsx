@@ -23,14 +23,24 @@ const leftAccent: Record<ToastType, string> = {
   info: 'before:bg-blue-500',
 };
 
+const typeBorder: Record<ToastType, string> = {
+  success: 'border-emerald-200 dark:border-emerald-500/40 ring-1 ring-emerald-500/10',
+  warning: 'border-amber-200 dark:border-amber-500/40 ring-1 ring-amber-500/10',
+  error:   'border-red-200 dark:border-red-500/40 ring-1 ring-red-500/15',
+  info:    'border-blue-200 dark:border-blue-500/40 ring-1 ring-blue-500/10',
+};
+
 export function ToastContainer() {
   const { toasts, removeToast } = useToast();
 
   if (toasts.length === 0) return null;
 
   return (
+    // z-[10000] keeps toasts above modals (z-50) and any other overlay.
+    // Pinned top-center on every breakpoint, fully opaque, with a strong
+    // shadow so it's instantly visible to a non-tech shopkeeper.
     <div
-      className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2.5 w-[calc(100vw-2rem)] max-w-sm pointer-events-none"
+      className="fixed top-4 left-1/2 -translate-x-1/2 z-[10000] flex flex-col gap-2.5 w-[calc(100vw-2rem)] max-w-sm pointer-events-none"
       aria-live="polite"
       aria-atomic="false"
     >
@@ -39,13 +49,14 @@ export function ToastContainer() {
         return (
           <div
             key={toast.id}
+            role="alert"
             className={`
               pointer-events-auto
               relative flex items-start gap-3
-              rounded-xl border border-gray-200 dark:border-gray-700
+              rounded-xl border ${typeBorder[toast.type]}
               bg-white dark:bg-gray-900
               px-4 py-3.5
-              shadow-[0_8px_30px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)]
+              shadow-[0_12px_40px_rgba(0,0,0,0.18)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.6)]
               animate-slide-in
               overflow-hidden
               before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:rounded-l-xl

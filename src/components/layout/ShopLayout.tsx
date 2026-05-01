@@ -9,6 +9,7 @@ import { PageTransition } from './PageTransition';
 import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { ShortcutsOverlay } from '../ui/ShortcutsOverlay';
 import { WhatsNewModal } from '../ui/WhatsNewModal';
+import { MVP_HIDE_SHORTCUTS_OVERLAY, MVP_HIDE_WHATSNEW_MODAL } from '../../config/mvp';
 
 export function ShopLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -29,8 +30,8 @@ export function ShopLayout() {
       </div>
       <BottomNav />
       <MobileFAB />
-      <ShortcutsOverlay />
-      <WhatsNewModal />
+      {!MVP_HIDE_SHORTCUTS_OVERLAY && <ShortcutsOverlay />}
+      {!MVP_HIDE_WHATSNEW_MODAL && <WhatsNewModal />}
     </div>
   );
 }

@@ -7,10 +7,11 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import {
-  subscriptionPlans, bills, inventoryItems, staffMembers,
+  subscriptionPlans, bills, staffMembers,
 } from '../../data/shop-dummy';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
+import { useShopCatalog } from '../../context/ShopCatalogContext';
 import type { SubscriptionPlan } from '../../types';
 
 const CURRENT_PLAN_ID = '1';
@@ -209,6 +210,7 @@ function PlanCard({ plan, isCurrent, onChoose }: { plan: SubscriptionPlan; isCur
 }
 
 export function ShopSubscription() {
+  const { items: catalogItems } = useShopCatalog();
   const [currentPlanId, setCurrentPlanId] = useState(CURRENT_PLAN_ID);
   const [trialDismissed, setTrialDismissed] = useState<boolean>(
     () => localStorage.getItem('shopmanager.trial.dismissed') === 'true'
@@ -220,9 +222,9 @@ export function ShopSubscription() {
 
   const usage = useMemo(() => ({
     bills: bills.length,
-    items: inventoryItems.length,
+    items: catalogItems.length,
     staff: staffMembers.length,
-  }), []);
+  }), [catalogItems.length]);
 
   const trialDaysLeft = useMemo(() => daysUntil(TRIAL_END_DATE), []);
   const isInTrial = trialDaysLeft > 0 && !trialDismissed;

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Plus,
   Pencil,
@@ -11,6 +12,7 @@ import {
   ChevronUp,
   Upload,
   Sparkles,
+  Tags,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card, StatCard } from '../../components/ui/Card';
@@ -27,18 +29,18 @@ import { Toggle } from '../../components/ui/Toggle';
 import { JargonHint } from '../../components/ui/JargonHint';
 import { Highlight } from '../../components/ui/Highlight';
 import { Checkbox } from '../../components/ui/Checkbox';
-import { inventoryItems as initialItems, suppliers, bills } from '../../data/shop-dummy';
+import { suppliers, bills } from '../../data/shop-dummy';
 import { formatCurrency, generateId } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { usePermissions } from '../../context/PermissionContext';
+import { useShopCatalog } from '../../context/ShopCatalogContext';
 import { usePagination } from '../../hooks/usePagination';
 import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
 import type { InventoryItem } from '../../types';
 import type { ExportColumn } from '../../utils/exporters';
 
-const DEFAULT_CATEGORIES = Array.from(new Set(initialItems.map(i => i.category))).sort();
-const DEFAULT_TAX_RATE = 18;
 const DEFAULT_REORDER = 10;
+const DEFAULT_TAX_RATE = 18;
 
 const emptyItem: Omit<InventoryItem, 'id'> = {
   name: '',
@@ -117,8 +119,7 @@ function MarginBadge({ cost, price }: { cost?: number; price: number }) {
 type StockFilter = '' | 'low' | 'out';
 
 export function ShopInventory() {
-  const [items, setItems] = useState<InventoryItem[]>(initialItems);
-  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
+  const { items, setItems, allCategoryNames, addCategory } = useShopCatalog();
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [stockFilter, setStockFilter] = useState<StockFilter>('');
@@ -150,10 +151,7 @@ export function ShopInventory() {
     ...suppliers.map(s => ({ label: s.name, value: s.id })),
   ], []);
 
-  const allCategories = useMemo(() =>
-    Array.from(new Set([...categories, ...items.map(i => i.category)])).sort(),
-    [items, categories]
-  );
+  const allCategories = allCategoryNames;
 
   const categoryFormOptions = useMemo(() => [
     { label: 'Select category', value: '' },
@@ -235,8 +233,10 @@ export function ShopInventory() {
   const handleAddCategory = () => {
     const trimmed = newCategory.trim();
     if (!trimmed) return;
-    if (categories.includes(trimmed)) { addToast('warning', 'Category already exists'); return; }
-    setCategories(prev => [...prev, trimmed].sort());
+    if (!addCategory(trimmed)) {
+      addToast('warning', 'Category already exists');
+      return;
+    }
     setForm(f => ({ ...f, category: trimmed }));
     setNewCategory('');
     setAddingCategory(false);
@@ -298,6 +298,13 @@ export function ShopInventory() {
           <p className="mt-1 text-sm text-gray-500">Manage items, prices, costs and stock levels.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            to="/shop/settings?tab=categories"
+            className="inline-flex items-center justify-center gap-2 rounded-lg font-medium h-10 px-4 text-[13px] border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:text-gray-900 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white"
+          >
+            <Tags size={16} />
+            Categories
+          </Link>
           <ExportMenu<InventoryItem>
             baseName="inventory"
             title="Inventory export"

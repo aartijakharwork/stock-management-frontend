@@ -65,7 +65,7 @@ export function Modal({ open, onClose, title, children, size = 'md', loading = f
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center animate-backdrop-in"
+      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center lg:items-start lg:pt-8 lg:pb-10 animate-backdrop-in"
       role="dialog"
       aria-modal="true"
       aria-label={title}

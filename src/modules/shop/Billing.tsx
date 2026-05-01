@@ -16,11 +16,12 @@ import { Input } from '../../components/ui/Input';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { JargonHint } from '../../components/ui/JargonHint';
 import { SuccessOverlay } from '../../components/ui/SuccessOverlay';
-import { inventoryItems, customers, bills as initialBills } from '../../data/shop-dummy';
+import { customers, bills as initialBills } from '../../data/shop-dummy';
 import { formatCurrency, formatDate, generateId, formatInvoiceNo, gstBreakdown, formatRelativeTime } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { useHeldBills } from '../../hooks/useHeldBills';
 import { useShopProfile } from '../../hooks/useShopProfile';
+import { useShopCatalog } from '../../context/ShopCatalogContext';
 import { playSuccess, playError, playClick, hapticSuccess, hapticTap, hapticError } from '../../utils/feedback';
 import type { CartItem, InventoryItem, Bill, PaymentMethod, SplitTender } from '../../types';
 
@@ -36,6 +37,7 @@ const PAYMENT_METHODS: { value: TenderMethod; label: string; icon: typeof Bankno
 type Mode = 'sale' | 'return';
 
 export function ShopBilling() {
+  const { items: inventoryItems, allCategoryNames } = useShopCatalog();
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -66,7 +68,7 @@ export function ShopBilling() {
   const { held, add: addHeld, remove: removeHeld } = useHeldBills();
   const { profile, invoice: invoiceTpl } = useShopProfile();
 
-  const categories = useMemo(() => Array.from(new Set(inventoryItems.map(i => i.category))).sort(), []);
+  const categories = allCategoryNames;
   const customerOptions = useMemo(() => [
     { label: 'Walk-in customer', value: '' },
     ...customers.map(c => ({ label: `${c.name} (${c.phone})`, value: c.id })),
@@ -84,7 +86,7 @@ export function ShopBilling() {
       const matchesCat = !category || i.category === category;
       return matchesSearch && matchesCat;
     });
-  }, [search, category]);
+  }, [search, category, inventoryItems]);
 
   const isUdhaar = mode === 'sale' && (paymentMethod as string) === 'udhaar' && !splitMode;
 

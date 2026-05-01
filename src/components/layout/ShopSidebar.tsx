@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionContext';
+import { isModuleVisible } from '../../config/mvp';
 import type { AppModule } from '../../types';
 
 interface ShopSidebarProps {
@@ -80,7 +81,7 @@ export function ShopSidebar({ open, onClose }: ShopSidebarProps) {
 
   const filteredGroups = navGroups.map(group => ({
     ...group,
-    items: group.items.filter(item => canAccessModule(item.module)),
+    items: group.items.filter(item => canAccessModule(item.module) && isModuleVisible(item.module)),
   })).filter(group => group.items.length > 0);
 
   return (

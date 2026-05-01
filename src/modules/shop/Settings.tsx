@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Save, Download, HardDrive, KeyRound, LogOut, Store, ShieldCheck, Eye, EyeOff,
   Wallet, Plus, IndianRupee, FileText, Bell, Plug, Settings as Cog, AlertTriangle,
-  Image as ImageIcon, Trash2, Printer, Eye as EyeIcon,
+  Image as ImageIcon, Trash2, Printer, Eye as EyeIcon, Tags,
+  type LucideIcon,
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -18,13 +19,16 @@ import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionContext';
 import { useShopProfile } from '../../hooks/useShopProfile';
 import { isSoundEnabled, setSoundEnabled, playSuccess } from '../../utils/feedback';
-import { useNavigate } from 'react-router-dom';
+import { MVP_MODE, MVP_VISIBLE_SETTINGS_TABS } from '../../config/mvp';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { SettingsCategoriesPanel } from './Categories';
 
-type Tab = 'profile' | 'template' | 'tax' | 'numbering' | 'notifications' | 'integrations' | 'backup' | 'danger';
+type Tab = 'profile' | 'template' | 'categories' | 'tax' | 'numbering' | 'notifications' | 'integrations' | 'backup' | 'danger';
 
-const TABS: { id: Tab; label: string; icon: typeof Store }[] = [
+const ALL_TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: 'profile', label: 'Shop profile', icon: Store },
   { id: 'template', label: 'Invoice template', icon: FileText },
+  { id: 'categories', label: 'Categories', icon: Tags },
   { id: 'tax', label: 'Tax setup', icon: IndianRupee },
   { id: 'numbering', label: 'Numbering', icon: Cog },
   { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -33,7 +37,14 @@ const TABS: { id: Tab; label: string; icon: typeof Store }[] = [
   { id: 'danger', label: 'Danger zone', icon: AlertTriangle },
 ];
 
+const SETTINGS_PHASE1_IDS = new Set<string>(MVP_VISIBLE_SETTINGS_TABS as unknown as string[]);
+
+const TABS = MVP_MODE
+  ? ALL_TABS.filter(t => SETTINGS_PHASE1_IDS.has(t.id))
+  : ALL_TABS;
+
 export function ShopSettings() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState<Tab>('profile');
   const { profile, invoice, notif, updateProfile, updateInvoice, updateNotif } = useShopProfile();
   const [profileLocal, setProfileLocal] = useState(profile);
@@ -46,6 +57,17 @@ export function ShopSettings() {
   const { can } = usePermissions();
   const navigate = useNavigate();
   const canEdit = can('settings', 'edit');
+
+  useEffect(() => {
+    const q = searchParams.get('tab');
+    if (q && TABS.some(t => t.id === q)) setTab(q as Tab);
+  }, [searchParams]);
+
+  // If `tab` is not in the visible strip (e.g. MVP hides that tab), snap back
+  // so the page never renders blank.
+  useEffect(() => {
+    if (!TABS.some(t => t.id === tab)) setTab(TABS[0]?.id ?? 'profile');
+  }, [tab]);
 
   const [walletBalance] = useState(250);
   const [taxConfig, setTaxConfig] = useState({ defaultRate: 18, gstScheme: 'regular' as 'regular' | 'composition' | 'unregistered' });
@@ -107,7 +129,11 @@ export function ShopSettings() {
       <UnsavedChangesGuard hasChanges={hasUnsavedChanges} />
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h1>
-        <p className="mt-1 text-sm text-gray-500">Manage your shop's branding, invoices, taxes and integrations.</p>
+        <p className="mt-1 text-sm text-gray-500">
+          {MVP_MODE
+            ? 'Your shop name on bills, how receipts look, and backup — the essentials.'
+            : 'Manage your shop\'s branding, invoices, taxes and integrations.'}
+        </p>
       </div>
 
       {/* Tabs */}
@@ -115,7 +141,12 @@ export function ShopSettings() {
         <Tabs
           tabs={TABS.map(({ id, label, icon: Icon }) => ({ id, label, icon: <Icon size={14} /> }))}
           activeTab={tab}
-          onChange={(id) => setTab(id as Tab)}
+          onChange={(id) => {
+            const next = id as Tab;
+            setTab(next);
+            if (next === 'profile') setSearchParams({}, { replace: true });
+            else setSearchParams({ tab: next }, { replace: true });
+          }}
           size="sm"
         />
       </div>
@@ -302,6 +333,10 @@ export function ShopSettings() {
             </div>
           </div>
         </div>
+      </TabPanel>
+
+      <TabPanel id="categories" activeTab={tab}>
+        <SettingsCategoriesPanel />
       </TabPanel>
 
       {/* Tax setup tab */}
@@ -544,6 +579,22 @@ export function ShopSettings() {
           </Card>
         </>
       </TabPanel>
+
+      {/* Phase 1: Danger zone tab is hidden — keep sign-out reachable */}
+      {MVP_MODE && (
+        <Card className="border-gray-200 dark:border-gray-800">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Signed in as</p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">{user?.name}</p>
+              <p className="text-xs text-gray-500 font-mono">{user?.email}</p>
+            </div>
+            <Button variant="secondary" icon={<LogOut size={14} />} size="sm" onClick={handleLogout}>
+              Sign out
+            </Button>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
