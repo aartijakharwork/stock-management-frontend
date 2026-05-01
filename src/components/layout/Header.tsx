@@ -1,7 +1,7 @@
 import {
   Menu, Bell, Sun, Moon, LogOut, ChevronDown,
   AlertTriangle, Clock, CheckCircle2, Receipt, UserPlus, Package, CreditCard, X as XIcon,
-  Wifi, WifiOff,
+  Wifi, WifiOff, BellOff, Trash2,
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useTheme } from '../../context/ThemeContext';
@@ -54,6 +54,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>(SAMPLE_NOTIFICATIONS);
+  const [notifFilter, setNotifFilter] = useState<'all' | 'unread' | 'alerts'>('all');
   const [statusOpen, setStatusOpen] = useState(false);
   const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [lastSync, setLastSync] = useState<Date>(() => new Date(Date.now() - 2 * 60 * 1000));
@@ -107,6 +108,9 @@ export function Header({ onMenuClick }: HeaderProps) {
     setNotifOpen(false);
     if (n.to) navigate(n.to);
   };
+
+  const dismissNotif = (id: string) => setNotifications(prev => prev.filter(n => n.id !== id));
+  const clearAllNotifs = () => setNotifications([]);
 
   const groupedNotifications = (() => {
     const today: NotificationItem[] = [];
@@ -255,93 +259,113 @@ export function Header({ onMenuClick }: HeaderProps) {
             )}
           </button>
 
-          {notifOpen && (
-            <div className="absolute right-0 top-full mt-2 w-[360px] max-w-[calc(100vw-32px)] rounded-xl border border-gray-200 bg-white dark:bg-gray-900 dark:border-gray-800 shadow-xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Notifications</h3>
-                  {unreadCount > 0 && (
-                    <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold tabular-nums">
-                      {unreadCount} new
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1">
-                  {unreadCount > 0 && (
-                    <button
-                      onClick={markAllRead}
-                      className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 hover:underline"
-                    >
-                      Mark all read
+          {notifOpen && (() => {
+            const alertCount = notifications.filter(n => n.kind === 'danger' || n.kind === 'warning').length;
+            const filteredNotifs = notifications.filter(n => {
+              if (notifFilter === 'unread') return n.unread;
+              if (notifFilter === 'alerts') return n.kind === 'danger' || n.kind === 'warning';
+              return true;
+            });
+            const dayMs = 24 * 60 * 60 * 1000;
+            const todayFiltered = filteredNotifs.filter(n => Date.now() - new Date(n.at).getTime() < dayMs);
+            const earlierFiltered = filteredNotifs.filter(n => Date.now() - new Date(n.at).getTime() >= dayMs);
+
+            const emptyMsg = notifFilter === 'unread' ? 'No unread notifications' : notifFilter === 'alerts' ? 'No alerts right now' : "You're all caught up";
+            const emptyIcon = notifFilter === 'alerts' ? <AlertTriangle size={28} className="mx-auto text-gray-300 dark:text-gray-600" /> : <CheckCircle2 size={28} className="mx-auto text-emerald-500" />;
+
+            const renderItem = (n: NotificationItem) => (
+              <li key={n.id} className="group relative">
+                <button
+                  onClick={() => onNotifClick(n)}
+                  className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors ${n.unread ? 'bg-emerald-50/40 dark:bg-emerald-500/5' : ''}`}
+                >
+                  <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${kindStyles[n.kind]}`}>
+                    {n.icon}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-sm ${n.unread ? 'font-semibold text-gray-900 dark:text-white' : 'font-medium text-gray-700 dark:text-gray-300'}`}>{n.title}</p>
+                    <p className="text-xs text-gray-500 mt-0.5 truncate">{n.description}</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">{formatRelativeTime(n.at)}</p>
+                  </div>
+                  {n.unread && <span className="mt-1.5 w-2 h-2 rounded-full bg-emerald-500 shrink-0" />}
+                </button>
+                <button
+                  onClick={e => { e.stopPropagation(); dismissNotif(n.id); }}
+                  className="absolute top-2 right-2 p-1 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                  aria-label="Dismiss"
+                >
+                  <XIcon size={12} />
+                </button>
+              </li>
+            );
+
+            return (
+            <div className="absolute right-0 top-full mt-2 w-[380px] max-w-[calc(100vw-32px)] rounded-xl border border-gray-200 bg-white dark:bg-gray-900 dark:border-gray-800 shadow-xl overflow-hidden animate-modal-in">
+              <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800">
+                <div className="flex items-center justify-between mb-2.5">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Notifications</h3>
+                    {unreadCount > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold tabular-nums">
+                        {unreadCount} new
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {unreadCount > 0 && (
+                      <button onClick={markAllRead} className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 hover:underline">
+                        Mark all read
+                      </button>
+                    )}
+                    <button onClick={() => setNotifOpen(false)} className="p-1 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" aria-label="Close">
+                      <XIcon size={14} />
                     </button>
-                  )}
-                  <button
-                    onClick={() => setNotifOpen(false)}
-                    className="p-1 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-                    aria-label="Close"
-                  >
-                    <XIcon size={14} />
-                  </button>
+                  </div>
+                </div>
+                <div className="flex gap-1">
+                  {([
+                    { key: 'all' as const, label: 'All', count: notifications.length },
+                    { key: 'unread' as const, label: 'Unread', count: unreadCount },
+                    { key: 'alerts' as const, label: 'Alerts', count: alertCount },
+                  ]).map(tab => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setNotifFilter(tab.key)}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                        notifFilter === tab.key
+                          ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'
+                          : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 dark:hover:text-gray-300'
+                      }`}
+                    >
+                      {tab.label} {tab.count > 0 && <span className="ml-0.5 tabular-nums">({tab.count})</span>}
+                    </button>
+                  ))}
                 </div>
               </div>
 
               <div className="max-h-[440px] overflow-y-auto">
-                {notifications.length === 0 ? (
+                {filteredNotifs.length === 0 ? (
                   <div className="py-12 text-center">
-                    <CheckCircle2 size={28} className="mx-auto text-emerald-500" />
-                    <p className="mt-2 text-sm text-gray-500">You're all caught up</p>
+                    {emptyIcon}
+                    <p className="mt-2 text-sm text-gray-500">{emptyMsg}</p>
+                    {notifFilter !== 'all' && (
+                      <button onClick={() => setNotifFilter('all')} className="mt-1 text-xs text-emerald-600 dark:text-emerald-400 hover:underline">
+                        View all notifications
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <>
-                    {groupedNotifications.today.length > 0 && (
+                    {todayFiltered.length > 0 && (
                       <>
                         <p className="px-4 pt-3 pb-1 text-[10px] font-semibold tracking-wider uppercase text-gray-400">Today</p>
-                        <ul>
-                          {groupedNotifications.today.map(n => (
-                            <li key={n.id}>
-                              <button
-                                onClick={() => onNotifClick(n)}
-                                className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors ${n.unread ? 'bg-emerald-50/40 dark:bg-emerald-500/5' : ''}`}
-                              >
-                                <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${kindStyles[n.kind]}`}>
-                                  {n.icon}
-                                </span>
-                                <div className="min-w-0 flex-1">
-                                  <p className={`text-sm ${n.unread ? 'font-semibold text-gray-900 dark:text-white' : 'font-medium text-gray-700 dark:text-gray-300'}`}>{n.title}</p>
-                                  <p className="text-xs text-gray-500 mt-0.5 truncate">{n.description}</p>
-                                  <p className="text-[11px] text-gray-400 mt-0.5">{formatRelativeTime(n.at)}</p>
-                                </div>
-                                {n.unread && <span className="mt-1.5 w-2 h-2 rounded-full bg-emerald-500 shrink-0" />}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
+                        <ul>{todayFiltered.map(renderItem)}</ul>
                       </>
                     )}
-
-                    {groupedNotifications.earlier.length > 0 && (
+                    {earlierFiltered.length > 0 && (
                       <>
                         <p className="px-4 pt-3 pb-1 text-[10px] font-semibold tracking-wider uppercase text-gray-400">Earlier</p>
-                        <ul>
-                          {groupedNotifications.earlier.map(n => (
-                            <li key={n.id}>
-                              <button
-                                onClick={() => onNotifClick(n)}
-                                className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors ${n.unread ? 'bg-emerald-50/40 dark:bg-emerald-500/5' : ''}`}
-                              >
-                                <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${kindStyles[n.kind]}`}>
-                                  {n.icon}
-                                </span>
-                                <div className="min-w-0 flex-1">
-                                  <p className={`text-sm ${n.unread ? 'font-semibold text-gray-900 dark:text-white' : 'font-medium text-gray-700 dark:text-gray-300'}`}>{n.title}</p>
-                                  <p className="text-xs text-gray-500 mt-0.5 truncate">{n.description}</p>
-                                  <p className="text-[11px] text-gray-400 mt-0.5">{formatRelativeTime(n.at)}</p>
-                                </div>
-                                {n.unread && <span className="mt-1.5 w-2 h-2 rounded-full bg-emerald-500 shrink-0" />}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
+                        <ul>{earlierFiltered.map(renderItem)}</ul>
                       </>
                     )}
                   </>
@@ -349,21 +373,26 @@ export function Header({ onMenuClick }: HeaderProps) {
               </div>
 
               <div className="border-t border-gray-200 dark:border-gray-800 px-4 py-2 flex items-center justify-between">
+                {notifications.length > 0 ? (
+                  <button
+                    onClick={clearAllNotifs}
+                    className="text-xs font-medium text-gray-500 hover:text-red-600 dark:hover:text-red-400 flex items-center gap-1"
+                  >
+                    <Trash2 size={11} /> Clear all
+                  </button>
+                ) : (
+                  <span className="text-xs text-gray-400">No notifications</span>
+                )}
                 <button
-                  className="text-xs font-medium text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                  className="text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
                   onClick={() => setNotifOpen(false)}
                 >
-                  Notification settings
-                </button>
-                <button
-                  className="text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:underline"
-                  onClick={() => setNotifOpen(false)}
-                >
-                  View all
+                  <BellOff size={11} /> Mute
                 </button>
               </div>
             </div>
-          )}
+            );
+          })()}
         </div>
 
         <div className="relative" ref={menuRef}>

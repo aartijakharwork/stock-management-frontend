@@ -15,6 +15,8 @@ import { Card, StatCard } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ExportMenu } from '../../components/ui/ExportMenu';
 import { CardListSkeleton, TableSkeleton } from '../../components/ui/Skeleton';
+import { Highlight } from '../../components/ui/Highlight';
+import { Checkbox } from '../../components/ui/Checkbox';
 import { customers as initialCustomers, bills as initialBills } from '../../data/shop-dummy';
 import { formatCurrency, formatDate, formatRelativeTime, generateId } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
@@ -84,6 +86,7 @@ export function ShopCustomers() {
   const [settleTarget, setSettleTarget] = useState<Customer | null>(null);
   const [securityInput, setSecurityInput] = useState('');
   const [securityError, setSecurityError] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const { addToast } = useToast();
   const { can } = usePermissions();
@@ -292,6 +295,27 @@ export function ShopCustomers() {
     setForm(f => ({ ...f, tags: f.tags.includes(t) ? f.tags.filter(x => x !== t) : [...f.tags, t] }));
   };
 
+  const toggleSelectCust = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const allCustSelected = pagination.pageData.length > 0 && pagination.pageData.every(c => selectedIds.has(c.id));
+  const someCustSelected = pagination.pageData.some(c => selectedIds.has(c.id));
+  const toggleSelectAllCust = () => {
+    if (allCustSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(pagination.pageData.map(c => c.id)));
+  };
+  const bulkSendReminder = () => {
+    const selected = customersList.filter(c => selectedIds.has(c.id) && c.pendingAmount > 0);
+    if (selected.length === 0) { addToast('warning', 'No selected customers have pending dues'); return; }
+    selected.forEach(c => sendWhatsAppReminder(c));
+    addToast('success', `Opened WhatsApp for ${selected.length} customer${selected.length === 1 ? '' : 's'}`);
+    setSelectedIds(new Set());
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -403,10 +427,40 @@ export function ShopCustomers() {
         </div>
       </Card>
 
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 animate-fade-in-up">
+          <Checkbox checked={allCustSelected} indeterminate={someCustSelected && !allCustSelected} onChange={toggleSelectAllCust} />
+          <span className="text-sm font-medium text-emerald-800 dark:text-emerald-300">{selectedIds.size} selected</span>
+          <div className="flex-1" />
+          <ExportMenu<Customer>
+            baseName="customers-selected"
+            title="Export selected"
+            meta={`${selectedIds.size} customers`}
+            columns={exportColumns}
+            rows={customersList.filter(c => selectedIds.has(c.id))}
+            size="sm"
+          />
+          <Button variant="secondary" size="sm" icon={<Share2 size={14} />} onClick={bulkSendReminder}>
+            Remind ({customersList.filter(c => selectedIds.has(c.id) && c.pendingAmount > 0).length})
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>Cancel</Button>
+        </div>
+      )}
+
       {/* Desktop table */}
       <div className="hidden sm:block">
-        {loading ? <TableSkeleton rows={6} columns={4} showAvatar /> : <Table
+        {loading ? <TableSkeleton rows={6} columns={4} showAvatar /> : <div className="animate-fade-in-up"><Table
           columns={[
+            {
+              key: 'select',
+              header: <Checkbox checked={allCustSelected} indeterminate={someCustSelected && !allCustSelected} onChange={toggleSelectAllCust} />,
+              className: 'w-10',
+              render: (c: Customer) => (
+                <span onClick={e => e.stopPropagation()}>
+                  <Checkbox checked={selectedIds.has(c.id)} onChange={() => toggleSelectCust(c.id)} />
+                </span>
+              ),
+            },
             {
               key: 'name',
               header: 'Customer',
@@ -425,7 +479,7 @@ export function ShopCustomers() {
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <span className="font-medium text-gray-900 dark:text-white">{c.name}</span>
+                        <span className="font-medium text-gray-900 dark:text-white"><Highlight text={c.name} query={search} /></span>
                         {c.tags?.map(tag => {
                           const tone = TAG_TONES[tag];
                           return <span key={tag} className={`text-[10px] font-medium uppercase px-1.5 py-0.5 rounded ${tone.bg} ${tone.text}`}>{tag}</span>;
@@ -443,7 +497,7 @@ export function ShopCustomers() {
               header: 'Phone',
               render: c => (
                 <a href={`tel:${c.phone}`} onClick={e => e.stopPropagation()} className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400">
-                  <Phone size={13} /> {c.phone}
+                  <Phone size={13} /> <Highlight text={c.phone} query={search} />
                 </a>
               ),
             },
@@ -534,23 +588,26 @@ export function ShopCustomers() {
           onSort={pagination.toggleSort}
           startIndex={pagination.startIndex}
           endIndex={pagination.endIndex}
-        />}
+        /></div>}
       </div>
 
       {/* Mobile cards */}
       <div className="space-y-3 sm:hidden">
-        {loading ? <CardListSkeleton rows={4} showAvatar /> : pagination.pageData.map(c => {
+        {loading ? <CardListSkeleton rows={4} showAvatar /> : <div className="animate-fade-in-up space-y-3">{pagination.pageData.map(c => {
           const aging = agingMap.get(c.id);
           return (
-            <div key={c.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+            <div key={c.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 hover-lift transition-transform">
               <button type="button" onClick={() => openDetail(c)} className="block w-full text-left">
                 <div className="flex items-center gap-3">
+                  <span className="shrink-0" onClick={e => e.stopPropagation()}>
+                    <Checkbox checked={selectedIds.has(c.id)} onChange={() => toggleSelectCust(c.id)} />
+                  </span>
                   <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-semibold shrink-0">
                     {initial(c.name)}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-gray-900 dark:text-white truncate flex items-center gap-1.5">
-                      {c.name}
+                      <Highlight text={c.name} query={search} />
                       {c.tags?.[0] && (() => {
                         const tone = TAG_TONES[c.tags[0]];
                         return <span className={`text-[10px] font-medium uppercase px-1.5 py-0.5 rounded ${tone.bg} ${tone.text}`}>{c.tags[0]}</span>;
@@ -577,7 +634,7 @@ export function ShopCustomers() {
               </div>
             </div>
           );
-        })}
+        })}</div>}
       </div>
 
       {/* Add Customer Modal */}

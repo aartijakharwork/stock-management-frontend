@@ -1,3 +1,5 @@
+import { useEffect, useState, type ReactNode } from 'react';
+
 type Rounded = 'none' | 'sm' | 'md' | 'lg' | 'xl' | 'full';
 
 interface SkeletonProps {
@@ -89,6 +91,46 @@ export function TableSkeleton({ rows = 6, columns = 4, showAvatar = false }: Tab
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+interface SkeletonSwapProps {
+  loading: boolean;
+  skeleton: ReactNode;
+  children: ReactNode;
+  className?: string;
+}
+
+// Smoothly cross-fades between the skeleton and the real content. Skeleton fades
+// out (~120ms) while the content fades in (~280ms) — eliminates the harsh swap.
+export function SkeletonSwap({ loading, skeleton, children, className = '' }: SkeletonSwapProps) {
+  const [showSkeleton, setShowSkeleton] = useState(loading);
+
+  useEffect(() => {
+    if (loading) {
+      setShowSkeleton(true);
+      return;
+    }
+    const t = setTimeout(() => setShowSkeleton(false), 140);
+    return () => clearTimeout(t);
+  }, [loading]);
+
+  return (
+    <div className={`relative ${className}`}>
+      {showSkeleton && (
+        <div
+          className={`transition-opacity duration-150 ${loading ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+          aria-hidden={!loading}
+        >
+          {skeleton}
+        </div>
+      )}
+      {!loading && (
+        <div className="animate-fade-in-up">
+          {children}
+        </div>
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import type { SortState } from '../../types';
 
 interface Column<T> {
   key: string;
-  header: string;
+  header: ReactNode;
   render: (item: T) => ReactNode;
   className?: string;
   sortable?: boolean;
@@ -148,7 +148,7 @@ export function Table<T>({ columns, data, keyExtractor, emptyMessage = 'No data 
                 <tr
                   key={keyExtractor(item)}
                   onClick={() => onRowClick?.(item)}
-                  className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${onRowClick ? 'cursor-pointer' : ''}`}
+                  className={`row-hover hover:bg-emerald-50/40 dark:hover:bg-emerald-500/5 ${onRowClick ? 'cursor-pointer' : ''}`}
                 >
                   {columns.map(col => (
                     <td key={col.key} className={`px-4 py-3 ${col.className || ''}`}>

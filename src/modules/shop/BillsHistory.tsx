@@ -192,7 +192,7 @@ export function ShopBillsHistory() {
 
       {/* Desktop table */}
       <div className="hidden sm:block">
-        {loading ? <TableSkeleton rows={6} columns={6} /> : <Table
+        {loading ? <TableSkeleton rows={6} columns={6} /> : <div className="animate-fade-in-up"><Table
           columns={[
             { key: 'id', header: 'Invoice', render: b => <span className="font-mono text-xs text-gray-700 dark:text-gray-300">{formatInvoiceNo(b.id, b.date)}</span> },
             {
@@ -268,17 +268,17 @@ export function ShopBillsHistory() {
           onSort={pagination.toggleSort}
           startIndex={pagination.startIndex}
           endIndex={pagination.endIndex}
-        />}
+        /></div>}
       </div>
 
       {/* Mobile cards */}
       <div className="space-y-3 sm:hidden">
-        {loading ? <CardListSkeleton rows={4} /> : pagination.pageData.map(b => (
+        {loading ? <CardListSkeleton rows={4} /> : <div className="animate-fade-in-up space-y-3">{pagination.pageData.map(b => (
           <button
             key={b.id}
             type="button"
             onClick={() => openBill(b)}
-            className="block w-full text-left bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4"
+            className="block w-full text-left bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 hover-lift active:scale-[0.99] transition-transform"
           >
             <div className="flex items-center justify-between gap-3">
               <span className="font-mono text-xs text-gray-700 dark:text-gray-300">{formatInvoiceNo(b.id, b.date)}</span>
@@ -296,7 +296,7 @@ export function ShopBillsHistory() {
               </div>
             </div>
           </button>
-        ))}
+        ))}</div>}
         {!loading && filtered.length === 0 && (
           <Card>
             <EmptyState

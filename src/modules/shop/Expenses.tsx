@@ -280,7 +280,7 @@ export function ShopExpenses() {
           />
         </Card>
       ) : (
-        <>
+        <div className="animate-fade-in-up">
           <div className="hidden sm:block">
             <Table
               columns={[
@@ -354,7 +354,7 @@ export function ShopExpenses() {
             {pagination.pageData.map(e => {
               const tone = CATEGORY_TONES[e.category as string] ?? CATEGORY_TONES.Misc;
               return (
-                <li key={e.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+                <li key={e.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 hover-lift transition-transform">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 mb-1">
@@ -377,7 +377,7 @@ export function ShopExpenses() {
               );
             })}
           </ul>
-        </>
+        </div>
       )}
 
       {/* Add/Edit modal */}

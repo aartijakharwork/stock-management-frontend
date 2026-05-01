@@ -12,6 +12,7 @@ import {
 import { StatCard, Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Toggle } from '../../components/ui/Toggle';
+import { Modal } from '../../components/ui/Modal';
 import { JargonHint } from '../../components/ui/JargonHint';
 import { ExportMenu } from '../../components/ui/ExportMenu';
 import { bills, customers, inventoryItems, expenses } from '../../data/shop-dummy';
@@ -59,6 +60,7 @@ const PERIOD_OPTIONS: { value: Period; label: string }[] = [
 export function ShopReports() {
   const [period, setPeriod] = useState<Period>('7d');
   const [compareMode, setCompareMode] = useState(false);
+  const [drillDown, setDrillDown] = useState<{ title: string; bills: Bill[] } | null>(null);
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
@@ -795,7 +797,7 @@ export function ShopReports() {
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Top Selling Items</h2>
-          <span className="text-xs text-gray-500">Hover bars for revenue · qty</span>
+          <span className="text-xs text-gray-500">Click a bar to see bills</span>
         </div>
         {topItems.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-8">No sales data</p>
@@ -813,7 +815,12 @@ export function ShopReports() {
                     'Revenue',
                   ]}
                 />
-                <Bar dataKey="revenue" fill="#10b981" radius={[0, 6, 6, 0]} name="revenue" />
+                <Bar dataKey="revenue" fill="#10b981" radius={[0, 6, 6, 0]} name="revenue" cursor="pointer" onClick={(data) => {
+                  if (data?.name) {
+                    const itemBills = filteredBills.filter(b => b.items.some(it => it.name === data.name));
+                    setDrillDown({ title: `Bills containing "${data.name}"`, bills: itemBills });
+                  }
+                }} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -890,6 +897,40 @@ export function ShopReports() {
           )}
         </Card>
       </div>
+      {/* Drill-down modal */}
+      <Modal open={!!drillDown} onClose={() => setDrillDown(null)} title={drillDown?.title || 'Bills'} size="lg">
+        {drillDown && drillDown.bills.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 dark:border-gray-700 text-xs text-gray-500">
+                  <th className="text-left py-2 font-medium">Invoice</th>
+                  <th className="text-left py-2 font-medium">Date</th>
+                  <th className="text-left py-2 font-medium">Customer</th>
+                  <th className="text-right py-2 font-medium">Total</th>
+                  <th className="text-center py-2 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {drillDown.bills.map(b => (
+                  <tr key={b.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                    <td className="py-2 font-mono text-xs">{formatInvoiceNo(b.id, b.date)}</td>
+                    <td className="py-2 text-gray-600 dark:text-gray-400">{formatDate(b.date)}</td>
+                    <td className="py-2 text-gray-900 dark:text-white">{b.customerName}</td>
+                    <td className="py-2 text-right tabular-nums font-medium">{formatCurrency(b.total)}</td>
+                    <td className="py-2 text-center">
+                      <Badge variant={b.paid ? 'success' : 'warning'}>{b.paid ? 'Paid' : 'Pending'}</Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-xs text-gray-500 mt-3 text-right">{drillDown.bills.length} bill{drillDown.bills.length === 1 ? '' : 's'} · Total: {formatCurrency(drillDown.bills.reduce((s, b) => s + b.total, 0))}</p>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500 py-8 text-center">No bills found.</p>
+        )}
+      </Modal>
     </div>
   );
 }

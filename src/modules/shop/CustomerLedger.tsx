@@ -10,6 +10,9 @@ import {
   Wallet,
   AlertTriangle,
   Pencil,
+  Printer,
+  Share2,
+  Filter,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card, StatCard } from '../../components/ui/Card';
@@ -18,6 +21,7 @@ import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
 import { Dropdown } from '../../components/ui/Dropdown';
 import { ExportMenu } from '../../components/ui/ExportMenu';
+import { Breadcrumb } from '../../components/ui/Breadcrumb';
 import {
   customers as initialCustomers,
   bills as initialBills,
@@ -44,6 +48,9 @@ export function ShopCustomerLedger() {
   const [ledger, setLedger] = useState<LedgerEntry[]>(initialLedger);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [kindFilter, setKindFilter] = useState('');
   const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash' as PaymentMethod, note: '' });
   const [adjustForm, setAdjustForm] = useState({ amount: '', kind: 'credit' as 'credit' | 'debit', note: '' });
 
@@ -73,6 +80,15 @@ export function ShopCustomerLedger() {
     });
     return withBalance.reverse(); // show newest first
   }, [customerBills, ledger, id]);
+
+  const filteredEntries = useMemo(() => {
+    return allEntries.filter(e => {
+      if (dateFrom && e.date < dateFrom) return false;
+      if (dateTo && e.date > dateTo) return false;
+      if (kindFilter && e.kind !== kindFilter) return false;
+      return true;
+    });
+  }, [allEntries, dateFrom, dateTo, kindFilter]);
 
   const totalBilled = customerBills.reduce((s, b) => s + b.total, 0);
   const totalReceived = useMemo(() => ledger.filter(l => l.customerId === id && l.kind === 'payment').reduce((s, l) => s + l.credit, 0), [ledger, id]);
@@ -147,7 +163,10 @@ export function ShopCustomerLedger() {
 
   return (
     <div className="space-y-6">
-      <Button variant="ghost" icon={<ArrowLeft size={16} />} onClick={() => navigate('/shop/customers')}>Back to customers</Button>
+      <Breadcrumb items={[
+        { label: 'Customers', href: '/shop/customers' },
+        { label: customer.name },
+      ]} />
 
       {/* Header card */}
       <Card>
@@ -220,47 +239,113 @@ export function ShopCustomerLedger() {
 
       {/* Ledger entries */}
       <Card>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h3 className="text-base font-semibold text-gray-900 dark:text-white">Ledger (khata)</h3>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="ghost" size="sm" icon={<Printer size={13} />} onClick={() => window.print()}>Print</Button>
+            <Button variant="ghost" size="sm" icon={<Share2 size={13} />} onClick={() => {
+              const lines = filteredEntries.reverse().map(e => `${e.date} | ${e.kind} | ${e.description} | Dr: ${e.debit || '-'} | Cr: ${e.credit || '-'} | Bal: ${e.balance}`);
+              const statement = `*${customer.name} — Ledger Statement*\n\n${lines.join('\n')}\n\nOutstanding: ${formatCurrency(outstanding)}`;
+              window.open(`https://wa.me/91${customer.phone}?text=${encodeURIComponent(statement)}`, '_blank');
+            }}>Share</Button>
             <ExportMenu
               baseName={`ledger-${customer.name.replace(/\s+/g, '-').toLowerCase()}`}
               title={`${customer.name} — ledger`}
-              meta={`${allEntries.length} entries · Outstanding ${formatCurrency(outstanding)}`}
+              meta={`${filteredEntries.length} entries · Outstanding ${formatCurrency(outstanding)}`}
               columns={exportColumns}
-              rows={allEntries}
+              rows={filteredEntries}
               size="sm"
             />
             <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => setAdjustOpen(true)}>Adjustment</Button>
           </div>
         </div>
 
-        {allEntries.length === 0 ? (
-          <p className="text-center text-sm text-gray-500 py-8">No transactions yet.</p>
+        {/* Filters */}
+        <div className="flex flex-wrap items-end gap-3 mb-4 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-medium text-gray-500">From</label>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-8 rounded-md bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 px-2 text-xs text-gray-900 dark:text-white outline-none focus:border-emerald-500" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-medium text-gray-500">To</label>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-8 rounded-md bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 px-2 text-xs text-gray-900 dark:text-white outline-none focus:border-emerald-500" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-medium text-gray-500">Type</label>
+            <select value={kindFilter} onChange={e => setKindFilter(e.target.value)} className="h-8 rounded-md bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 px-2 text-xs text-gray-900 dark:text-white outline-none focus:border-emerald-500">
+              <option value="">All types</option>
+              <option value="bill">Bills</option>
+              <option value="payment">Payments</option>
+              <option value="adjustment">Adjustments</option>
+              <option value="return">Returns</option>
+            </select>
+          </div>
+          {(dateFrom || dateTo || kindFilter) && (
+            <button onClick={() => { setDateFrom(''); setDateTo(''); setKindFilter(''); }} className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline h-8 flex items-center">Clear</button>
+          )}
+        </div>
+
+        {filteredEntries.length === 0 ? (
+          <p className="text-center text-sm text-gray-500 py-8">No transactions match filters.</p>
         ) : (
-          <ul className="divide-y divide-gray-200 dark:divide-gray-800">
-            {allEntries.map(e => (
-              <li key={e.id} className="py-3 flex items-center gap-4">
-                <div className={`w-10 h-10 rounded-full shrink-0 flex items-center justify-center ${
-                  e.kind === 'payment' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' :
-                  e.kind === 'adjustment' ? 'bg-purple-50 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400' :
-                  e.kind === 'return' ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' :
-                  'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400'
-                }`}>
-                  {e.kind === 'payment' ? <Wallet size={16} /> : e.kind === 'return' ? <ReceiptText size={16} /> : e.kind === 'adjustment' ? <Pencil size={16} /> : <ReceiptText size={16} />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{e.description}</p>
-                  <p className="text-xs text-gray-500">{formatDate(e.date)} · <span className="capitalize">{e.kind}</span></p>
-                </div>
-                <div className="text-right shrink-0">
-                  {e.debit > 0 && <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 tabular-nums">+{formatCurrency(e.debit)}</p>}
-                  {e.credit > 0 && <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">−{formatCurrency(e.credit)}</p>}
-                  <p className="text-[11px] text-gray-500 tabular-nums">Bal: {formatCurrency(e.balance)}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <>
+            {/* Desktop statement table */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-700 text-gray-500 text-xs">
+                    <th className="text-left py-2 font-medium">Date</th>
+                    <th className="text-left py-2 font-medium">Description</th>
+                    <th className="text-left py-2 font-medium">Type</th>
+                    <th className="text-right py-2 font-medium">Debit</th>
+                    <th className="text-right py-2 font-medium">Credit</th>
+                    <th className="text-right py-2 font-medium">Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {filteredEntries.map(e => (
+                    <tr key={e.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                      <td className="py-2.5 text-gray-600 dark:text-gray-400 tabular-nums whitespace-nowrap">{formatDate(e.date)}</td>
+                      <td className="py-2.5 text-gray-900 dark:text-white font-medium truncate max-w-[240px]">{e.description}</td>
+                      <td className="py-2.5">
+                        <Badge variant={e.kind === 'payment' ? 'success' : e.kind === 'return' ? 'info' : e.kind === 'adjustment' ? 'neutral' : 'warning'}>
+                          {e.kind}
+                        </Badge>
+                      </td>
+                      <td className="py-2.5 text-right tabular-nums text-amber-600 dark:text-amber-400 font-medium">{e.debit > 0 ? formatCurrency(e.debit) : ''}</td>
+                      <td className="py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400 font-medium">{e.credit > 0 ? formatCurrency(e.credit) : ''}</td>
+                      <td className="py-2.5 text-right tabular-nums font-semibold text-gray-900 dark:text-white">{formatCurrency(e.balance)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile card view */}
+            <ul className="divide-y divide-gray-200 dark:divide-gray-800 sm:hidden">
+              {filteredEntries.map(e => (
+                <li key={e.id} className="py-3 flex items-center gap-4">
+                  <div className={`w-10 h-10 rounded-full shrink-0 flex items-center justify-center ${
+                    e.kind === 'payment' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' :
+                    e.kind === 'adjustment' ? 'bg-purple-50 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400' :
+                    e.kind === 'return' ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' :
+                    'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400'
+                  }`}>
+                    {e.kind === 'payment' ? <Wallet size={16} /> : e.kind === 'return' ? <ReceiptText size={16} /> : e.kind === 'adjustment' ? <Pencil size={16} /> : <ReceiptText size={16} />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{e.description}</p>
+                    <p className="text-xs text-gray-500">{formatDate(e.date)} · <span className="capitalize">{e.kind}</span></p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    {e.debit > 0 && <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 tabular-nums">+{formatCurrency(e.debit)}</p>}
+                    {e.credit > 0 && <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">−{formatCurrency(e.credit)}</p>}
+                    <p className="text-[11px] text-gray-500 tabular-nums">Bal: {formatCurrency(e.balance)}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </Card>
 

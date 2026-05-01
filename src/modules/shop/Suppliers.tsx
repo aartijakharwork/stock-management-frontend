@@ -11,6 +11,7 @@ import { Dropdown } from '../../components/ui/Dropdown';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ExportMenu } from '../../components/ui/ExportMenu';
 import { CardListSkeleton, TableSkeleton } from '../../components/ui/Skeleton';
+import { Highlight } from '../../components/ui/Highlight';
 import { suppliers as initialSuppliers, purchases, inventoryItems } from '../../data/shop-dummy';
 import { formatCurrency, formatDate, generateId, formatRelativeTime } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
@@ -167,7 +168,7 @@ export function ShopSuppliers() {
           />
         </Card>
       ) : (
-        <>
+        <div className="animate-fade-in-up">
           <div className="hidden sm:block">
             <Table
               columns={[
@@ -177,7 +178,7 @@ export function ShopSuppliers() {
                   sortable: true,
                   render: s => (
                     <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{s.name}</p>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white"><Highlight text={s.name} query={search} /></p>
                       {s.contactPerson && <p className="text-xs text-gray-500">{s.contactPerson}</p>}
                     </div>
                   ),
@@ -238,10 +239,10 @@ export function ShopSuppliers() {
 
           <ul className="space-y-3 sm:hidden">
             {pagination.pageData.map(s => (
-              <li key={s.id} onClick={() => setDetailSupplier(s)} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 cursor-pointer">
+              <li key={s.id} onClick={() => setDetailSupplier(s)} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 cursor-pointer hover-lift active:scale-[0.99] transition-transform">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">{s.name}</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white"><Highlight text={s.name} query={search} /></p>
                     {s.contactPerson && <p className="text-xs text-gray-500">{s.contactPerson}</p>}
                     <a href={`tel:${s.phone}`} onClick={e => e.stopPropagation()} className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">
                       <Phone size={11} /> {s.phone}
@@ -255,7 +256,7 @@ export function ShopSuppliers() {
               </li>
             ))}
           </ul>
-        </>
+        </div>
       )}
 
       {/* Add/Edit modal */}

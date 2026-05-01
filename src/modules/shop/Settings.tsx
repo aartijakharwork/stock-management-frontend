@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Save, Download, HardDrive, KeyRound, LogOut, Store, ShieldCheck, Eye, EyeOff,
   Wallet, Plus, IndianRupee, FileText, Bell, Plug, Settings as Cog, AlertTriangle,
-  Image as ImageIcon, Trash2,
+  Image as ImageIcon, Trash2, Printer, Eye as EyeIcon,
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -10,11 +10,14 @@ import { Button } from '../../components/ui/Button';
 import { Toggle } from '../../components/ui/Toggle';
 import { Dropdown } from '../../components/ui/Dropdown';
 import { Badge } from '../../components/ui/Badge';
+import { Tabs, TabPanel } from '../../components/ui/Tabs';
+import { UnsavedChangesGuard } from '../../components/ui/UnsavedChangesGuard';
 import { formatCurrency } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionContext';
 import { useShopProfile } from '../../hooks/useShopProfile';
+import { isSoundEnabled, setSoundEnabled, playSuccess } from '../../utils/feedback';
 import { useNavigate } from 'react-router-dom';
 
 type Tab = 'profile' | 'template' | 'tax' | 'numbering' | 'notifications' | 'integrations' | 'backup' | 'danger';
@@ -46,6 +49,12 @@ export function ShopSettings() {
 
   const [walletBalance] = useState(250);
   const [taxConfig, setTaxConfig] = useState({ defaultRate: 18, gstScheme: 'regular' as 'regular' | 'composition' | 'unregistered' });
+  const [soundOn, setSoundOn] = useState(isSoundEnabled());
+
+  const hasUnsavedChanges = useMemo(() => {
+    return JSON.stringify(profileLocal) !== JSON.stringify(profile)
+      || JSON.stringify(invoiceLocal) !== JSON.stringify(invoice);
+  }, [profileLocal, profile, invoiceLocal, invoice]);
 
   const handleSecurityToggle = (enabled: boolean) => {
     setSecurityEnabled(enabled);
@@ -63,7 +72,16 @@ export function ShopSettings() {
     addToast('success', 'Security code updated');
   };
 
+  const [profileErrors, setProfileErrors] = useState<Record<string, string>>({});
+
   const handleProfileSave = () => {
+    const errs: Record<string, string> = {};
+    if (!profileLocal.name.trim()) errs.name = 'Shop name is required';
+    if (!profileLocal.phone.trim()) errs.phone = 'Phone number is required';
+    if (profileLocal.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profileLocal.email)) errs.email = 'Enter a valid email';
+    if (profileLocal.gstin && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(profileLocal.gstin)) errs.gstin = 'Enter a valid 15-digit GSTIN';
+    setProfileErrors(errs);
+    if (Object.keys(errs).length > 0) { addToast('error', 'Fix errors before saving'); return; }
     updateProfile(profileLocal);
     addToast('success', 'Shop profile saved');
   };
@@ -86,31 +104,24 @@ export function ShopSettings() {
 
   return (
     <div className="space-y-6">
+      <UnsavedChangesGuard hasChanges={hasUnsavedChanges} />
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h1>
         <p className="mt-1 text-sm text-gray-500">Manage your shop's branding, invoices, taxes and integrations.</p>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 overflow-x-auto pb-1 -mx-1 px-1 sticky top-16 z-10 bg-gray-50/80 dark:bg-gray-950/80 backdrop-blur-sm">
-        {TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setTab(id)}
-            className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-              tab === id
-                ? 'bg-emerald-600 text-white'
-                : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800'
-            }`}
-          >
-            <Icon size={14} />
-            {label}
-          </button>
-        ))}
+      <div className="sticky top-16 z-10 bg-gray-50/80 dark:bg-gray-950/80 backdrop-blur-sm py-1">
+        <Tabs
+          tabs={TABS.map(({ id, label, icon: Icon }) => ({ id, label, icon: <Icon size={14} /> }))}
+          activeTab={tab}
+          onChange={(id) => setTab(id as Tab)}
+          size="sm"
+        />
       </div>
 
       {/* Profile tab */}
-      {tab === 'profile' && (
+      <TabPanel id="profile" activeTab={tab}>
         <Card>
           <div className="flex items-center gap-3 mb-5">
             <div className="w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
@@ -140,7 +151,7 @@ export function ShopSettings() {
           </div>
 
           <div className="space-y-4">
-            <Input label="Shop name *" value={profileLocal.name} onChange={e => setProfileLocal(p => ({ ...p, name: e.target.value }))} />
+            <Input label="Shop name *" value={profileLocal.name} error={profileErrors.name} onChange={e => { setProfileLocal(p => ({ ...p, name: e.target.value })); setProfileErrors(e2 => { const n = { ...e2 }; delete n.name; return n; }); }} />
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Address</label>
               <textarea
@@ -151,67 +162,150 @@ export function ShopSettings() {
               />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="Phone *" value={profileLocal.phone} onChange={e => setProfileLocal(p => ({ ...p, phone: e.target.value }))} />
-              <Input label="Email" type="email" value={profileLocal.email} onChange={e => setProfileLocal(p => ({ ...p, email: e.target.value }))} />
+              <Input label="Phone *" value={profileLocal.phone} error={profileErrors.phone} onChange={e => { setProfileLocal(p => ({ ...p, phone: e.target.value })); setProfileErrors(e2 => { const n = { ...e2 }; delete n.phone; return n; }); }} />
+              <Input label="Email" type="email" value={profileLocal.email} error={profileErrors.email} onChange={e => { setProfileLocal(p => ({ ...p, email: e.target.value })); setProfileErrors(e2 => { const n = { ...e2 }; delete n.email; return n; }); }} />
             </div>
-            <Input label="GSTIN" value={profileLocal.gstin} onChange={e => setProfileLocal(p => ({ ...p, gstin: e.target.value }))} placeholder="07AABCU9603R1ZM" />
+            <Input label="GSTIN" value={profileLocal.gstin} error={profileErrors.gstin} onChange={e => { setProfileLocal(p => ({ ...p, gstin: e.target.value })); setProfileErrors(e2 => { const n = { ...e2 }; delete n.gstin; return n; }); }} placeholder="07AABCU9603R1ZM" />
           </div>
           <div className="mt-5 flex justify-end pt-4 border-t border-gray-200 dark:border-gray-800">
             {canEdit && <Button variant="primary" size="sm" icon={<Save size={14} />} onClick={handleProfileSave}>Save changes</Button>}
           </div>
         </Card>
-      )}
+      </TabPanel>
 
       {/* Template tab */}
-      {tab === 'template' && (
-        <Card>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Invoice template</h2>
-          <p className="text-xs text-gray-500 mb-5">Customize what appears on the printed bill.</p>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Dropdown
-                label="Receipt size"
-                options={[
-                  { label: '80mm thermal (most printers)', value: '80mm' },
-                  { label: '58mm thermal (compact)', value: '58mm' },
-                  { label: 'A4 — full page', value: 'a4' },
-                ]}
-                value={invoiceLocal.thermalSize}
-                onChange={e => setInvoiceLocal(t => ({ ...t, thermalSize: e.target.value as 'a4' | '80mm' | '58mm' }))}
-              />
+      <TabPanel id="template" activeTab={tab}>
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6">
+          <Card>
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Invoice template</h2>
+              <button onClick={() => document.getElementById('receipt-preview-block')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="lg:hidden inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:underline">
+                <EyeIcon size={12} /> See preview
+              </button>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Footer text</label>
-              <textarea
-                rows={2}
-                value={invoiceLocal.footerText}
-                onChange={e => setInvoiceLocal(t => ({ ...t, footerText: e.target.value }))}
-                className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-3 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none resize-none"
-              />
+            <p className="text-xs text-gray-500 mb-5">Customize what appears on the printed bill. Preview updates live as you edit.</p>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Dropdown
+                  label="Receipt size"
+                  options={[
+                    { label: '80mm thermal (most printers)', value: '80mm' },
+                    { label: '58mm thermal (compact)', value: '58mm' },
+                    { label: 'A4 — full page', value: 'a4' },
+                  ]}
+                  value={invoiceLocal.thermalSize}
+                  onChange={e => setInvoiceLocal(t => ({ ...t, thermalSize: e.target.value as 'a4' | '80mm' | '58mm' }))}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Footer text</label>
+                <textarea
+                  rows={2}
+                  value={invoiceLocal.footerText}
+                  onChange={e => setInvoiceLocal(t => ({ ...t, footerText: e.target.value }))}
+                  className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-3 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none resize-none"
+                />
+              </div>
+              <label className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">Show GSTIN</p>
+                  <p className="text-xs text-gray-500">Print your registration number on every bill</p>
+                </div>
+                <Toggle checked={invoiceLocal.showGstin} onChange={v => setInvoiceLocal(t => ({ ...t, showGstin: v }))} />
+              </label>
+              <label className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">Show signature line</p>
+                  <p className="text-xs text-gray-500">Reserve space for shopkeeper signature at the bottom</p>
+                </div>
+                <Toggle checked={invoiceLocal.showSignature} onChange={v => setInvoiceLocal(t => ({ ...t, showSignature: v }))} />
+              </label>
             </div>
-            <label className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
-              <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">Show GSTIN</p>
-                <p className="text-xs text-gray-500">Print your registration number on every bill</p>
+            <div className="mt-5 flex justify-end pt-4 border-t border-gray-200 dark:border-gray-800">
+              {canEdit && <Button variant="primary" size="sm" icon={<Save size={14} />} onClick={handleInvoiceSave}>Save template</Button>}
+            </div>
+          </Card>
+
+          {/* Live receipt preview */}
+          <div id="receipt-preview-block">
+            <div className="lg:sticky lg:top-32">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                  </span>
+                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Live preview</p>
+                </div>
+                <button onClick={() => window.print()} className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+                  <Printer size={12} /> Test print
+                </button>
               </div>
-              <Toggle checked={invoiceLocal.showGstin} onChange={v => setInvoiceLocal(t => ({ ...t, showGstin: v }))} />
-            </label>
-            <label className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
-              <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">Show signature line</p>
-                <p className="text-xs text-gray-500">Reserve space for shopkeeper signature at the bottom</p>
+              <div className={`bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm mx-auto overflow-hidden transition-all duration-200 ${
+                invoiceLocal.thermalSize === '58mm' ? 'max-w-[220px]' : invoiceLocal.thermalSize === '80mm' ? 'max-w-[300px]' : 'max-w-full'
+              }`}>
+                <div className="p-4 text-center border-b border-dashed border-gray-300 dark:border-gray-700">
+                  {profileLocal.logoUrl && <img src={profileLocal.logoUrl} alt="" className="w-10 h-10 mx-auto mb-2 rounded object-cover" />}
+                  <p className="font-bold text-sm text-gray-900 dark:text-white">{profileLocal.name || 'Shop Name'}</p>
+                  {profileLocal.address && <p className="text-[10px] text-gray-500 mt-0.5 whitespace-pre-line">{profileLocal.address}</p>}
+                  {profileLocal.phone && <p className="text-[10px] text-gray-500">Ph: {profileLocal.phone}</p>}
+                  {profileLocal.email && <p className="text-[10px] text-gray-500">{profileLocal.email}</p>}
+                  {invoiceLocal.showGstin && profileLocal.gstin && <p className="text-[10px] font-mono text-gray-400 mt-0.5">GSTIN: {profileLocal.gstin}</p>}
+                </div>
+                <div className="px-4 py-2 border-b border-dashed border-gray-300 dark:border-gray-700">
+                  <div className="flex justify-between text-[10px] text-gray-500 font-mono">
+                    <span>{invoiceLocal.prefix || 'INV'}-2026-04-{String(invoiceLocal.startNumber || 1).padStart(4, '0')}</span>
+                    <span>{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                  </div>
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mt-1">Customer: Rajesh Patel</p>
+                </div>
+                <div className="px-4 py-2">
+                  <table className="w-full text-[10px]">
+                    <thead>
+                      <tr className="text-gray-500 border-b border-gray-200 dark:border-gray-700">
+                        <th className="text-left py-1 font-medium">Item</th>
+                        <th className="text-center py-1 font-medium">Qty</th>
+                        <th className="text-right py-1 font-medium">Amt</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-gray-700 dark:text-gray-300">
+                      <tr><td className="py-0.5">Engine Oil 5W-30</td><td className="text-center">2</td><td className="text-right tabular-nums">{formatCurrency(1200)}</td></tr>
+                      <tr><td className="py-0.5">Oil Filter</td><td className="text-center">1</td><td className="text-right tabular-nums">{formatCurrency(350)}</td></tr>
+                      <tr><td className="py-0.5">Brake Pad Set</td><td className="text-center">1</td><td className="text-right tabular-nums">{formatCurrency(1800)}</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div className="px-4 py-2 border-t border-dashed border-gray-300 dark:border-gray-700 space-y-0.5">
+                  <div className="flex justify-between text-[10px] text-gray-500"><span>Subtotal</span><span className="tabular-nums">{formatCurrency(3350)}</span></div>
+                  {invoiceLocal.showGstin && (
+                    <>
+                      <div className="flex justify-between text-[10px] text-gray-500"><span>CGST (9%)</span><span className="tabular-nums">{formatCurrency(301)}</span></div>
+                      <div className="flex justify-between text-[10px] text-gray-500"><span>SGST (9%)</span><span className="tabular-nums">{formatCurrency(301)}</span></div>
+                    </>
+                  )}
+                  <div className="flex justify-between text-xs font-bold text-gray-900 dark:text-white pt-1 border-t border-gray-200 dark:border-gray-700"><span>Total</span><span className="tabular-nums">{formatCurrency(invoiceLocal.showGstin ? 3952 : 3350)}</span></div>
+                  <div className="flex justify-between text-[10px] text-gray-500"><span>Paid via</span><span>Cash</span></div>
+                </div>
+                {(invoiceLocal.footerText || invoiceLocal.showSignature) && (
+                  <div className="px-4 py-3 border-t border-dashed border-gray-300 dark:border-gray-700 text-center">
+                    {invoiceLocal.footerText && <p className="text-[10px] text-gray-400 italic whitespace-pre-line">{invoiceLocal.footerText}</p>}
+                    {invoiceLocal.showSignature && (
+                      <div className="mt-4 pt-3">
+                        <div className="w-24 mx-auto border-t border-gray-300 dark:border-gray-600" />
+                        <p className="text-[9px] text-gray-400 mt-1">Authorized Signature</p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              <Toggle checked={invoiceLocal.showSignature} onChange={v => setInvoiceLocal(t => ({ ...t, showSignature: v }))} />
-            </label>
+              <p className="text-[10px] text-gray-400 text-center mt-2">Sample data shown · actual bills use live values</p>
+            </div>
           </div>
-          <div className="mt-5 flex justify-end pt-4 border-t border-gray-200 dark:border-gray-800">
-            {canEdit && <Button variant="primary" size="sm" icon={<Save size={14} />} onClick={handleInvoiceSave}>Save template</Button>}
-          </div>
-        </Card>
-      )}
+        </div>
+      </TabPanel>
 
       {/* Tax setup tab */}
-      {tab === 'tax' && (
+      <TabPanel id="tax" activeTab={tab}>
         <Card>
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Tax setup</h2>
           <p className="text-xs text-gray-500 mb-5">Default GST rates and registration scheme.</p>
@@ -237,10 +331,10 @@ export function ShopSettings() {
             <Button variant="primary" size="sm" icon={<Save size={14} />} onClick={() => addToast('success', 'Tax settings saved')}>Save</Button>
           </div>
         </Card>
-      )}
+      </TabPanel>
 
       {/* Numbering tab */}
-      {tab === 'numbering' && (
+      <TabPanel id="numbering" activeTab={tab}>
         <Card>
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Invoice numbering</h2>
           <p className="text-xs text-gray-500 mb-5">Customize how bill numbers are generated.</p>
@@ -260,10 +354,10 @@ export function ShopSettings() {
             {canEdit && <Button variant="primary" size="sm" icon={<Save size={14} />} onClick={handleInvoiceSave}>Save numbering</Button>}
           </div>
         </Card>
-      )}
+      </TabPanel>
 
       {/* Notifications tab */}
-      {tab === 'notifications' && (
+      <TabPanel id="notifications" activeTab={tab}>
         <>
           <Card>
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Notifications</h2>
@@ -283,6 +377,13 @@ export function ShopSettings() {
                   <Toggle checked={notif[item.key]} onChange={v => updateNotif({ [item.key]: v })} />
                 </div>
               ))}
+              <div className="flex items-start justify-between gap-4 py-4">
+                <div>
+                  <p className="text-sm text-gray-900 dark:text-white">Sound on bill confirm</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Soft chime + haptic buzz when a bill is generated.</p>
+                </div>
+                <Toggle checked={soundOn} onChange={v => { setSoundOn(v); setSoundEnabled(v); if (v) playSuccess(); }} />
+              </div>
             </div>
           </Card>
 
@@ -309,10 +410,10 @@ export function ShopSettings() {
             </div>
           </Card>
         </>
-      )}
+      </TabPanel>
 
       {/* Integrations tab */}
-      {tab === 'integrations' && (
+      <TabPanel id="integrations" activeTab={tab}>
         <div className="space-y-4">
           {[
             { name: 'WhatsApp Business', desc: 'Send invoices and payment reminders directly via WhatsApp.', status: 'connected' as const },
@@ -343,10 +444,10 @@ export function ShopSettings() {
             </Card>
           ))}
         </div>
-      )}
+      </TabPanel>
 
       {/* Backup tab */}
-      {tab === 'backup' && (
+      <TabPanel id="backup" activeTab={tab}>
         <>
           <Card>
             <div className="flex items-start justify-between gap-4">
@@ -396,10 +497,10 @@ export function ShopSettings() {
             <p className="mt-4 text-[11px] text-gray-500">Last backup: yesterday at 11:47 PM · Auto-backup is OFF.</p>
           </Card>
         </>
-      )}
+      </TabPanel>
 
       {/* Danger zone tab */}
-      {tab === 'danger' && (
+      <TabPanel id="danger" activeTab={tab}>
         <>
           <Card className="border-amber-200 dark:border-amber-500/30">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Account</h2>
@@ -442,7 +543,7 @@ export function ShopSettings() {
             </div>
           </Card>
         </>
-      )}
+      </TabPanel>
     </div>
   );
 }

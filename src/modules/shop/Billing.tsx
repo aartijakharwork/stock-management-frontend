@@ -15,11 +15,13 @@ import { Badge } from '../../components/ui/Badge';
 import { Input } from '../../components/ui/Input';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { JargonHint } from '../../components/ui/JargonHint';
+import { SuccessOverlay } from '../../components/ui/SuccessOverlay';
 import { inventoryItems, customers, bills as initialBills } from '../../data/shop-dummy';
 import { formatCurrency, formatDate, generateId, formatInvoiceNo, gstBreakdown, formatRelativeTime } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { useHeldBills } from '../../hooks/useHeldBills';
 import { useShopProfile } from '../../hooks/useShopProfile';
+import { playSuccess, playError, playClick, hapticSuccess, hapticTap, hapticError } from '../../utils/feedback';
 import type { CartItem, InventoryItem, Bill, PaymentMethod, SplitTender } from '../../types';
 
 type TenderMethod = PaymentMethod | 'udhaar';
@@ -47,6 +49,7 @@ export function ShopBilling() {
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const [receipt, setReceipt] = useState<Bill | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
   const [splitMode, setSplitMode] = useState(false);
   const [splitTenders, setSplitTenders] = useState<SplitTender[]>([{ method: 'cash', amount: 0 }]);
   const [roundOffEnabled, setRoundOffEnabled] = useState(true);
@@ -55,6 +58,10 @@ export function ShopBilling() {
   const [heldOpen, setHeldOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [lastBill, setLastBill] = useState<Bill | null>(null);
+  const [numpadItem, setNumpadItem] = useState<string | null>(null);
+  const [numpadValue, setNumpadValue] = useState('');
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scanInput, setScanInput] = useState('');
   const { addToast } = useToast();
   const { held, add: addHeld, remove: removeHeld } = useHeldBills();
   const { profile, invoice: invoiceTpl } = useShopProfile();
@@ -83,17 +90,20 @@ export function ShopBilling() {
 
   const addToCart = (item: InventoryItem) => {
     if (item.stock === 0 && mode === 'sale') return;
+    let added = true;
     setCart(prev => {
       const existing = prev.find(c => c.id === item.id);
       if (existing) {
         if (mode === 'sale' && existing.quantity >= item.stock) {
           addToast('warning', 'Max stock reached');
+          added = false;
           return prev;
         }
         return prev.map(c => c.id === item.id ? { ...c, quantity: c.quantity + 1 } : c);
       }
       return [...prev, { ...item, quantity: 1, lineDiscount: 0 }];
     });
+    if (added) { playClick(); hapticTap(); }
   };
 
   const updateQuantity = (id: string, delta: number) => {
@@ -173,17 +183,43 @@ export function ShopBilling() {
 
   const handleConfirmBill = () => {
     const err = validateBeforeBill();
-    if (err) { addToast('error', err); return; }
+    if (err) { addToast('error', err); playError(); hapticError(); return; }
     setConfirmOpen(true);
   };
 
   const finalizeBill = () => {
     const bill = buildBill();
-    setReceipt(bill);
     setLastBill(bill);
     setMobileCartOpen(false);
     setConfirmOpen(false);
-    addToast('success', mode === 'return' ? 'Credit note created' : 'Bill generated', `${formatInvoiceNo(bill.id, bill.date)} · ${formatCurrency(Math.abs(bill.total))}`);
+    setShowSuccess(true);
+    playSuccess();
+    hapticSuccess();
+    setTimeout(() => {
+      setShowSuccess(false);
+      setReceipt(bill);
+    }, 1400);
+  };
+
+  const openNumpad = (itemId: string) => {
+    const item = cart.find(c => c.id === itemId);
+    if (item) { setNumpadItem(itemId); setNumpadValue(String(item.quantity)); }
+  };
+  const confirmNumpad = () => {
+    const qty = parseInt(numpadValue, 10);
+    if (numpadItem && qty > 0) {
+      setCart(prev => prev.map(c => c.id === numpadItem ? { ...c, quantity: qty } : c));
+    } else if (numpadItem && (qty === 0 || isNaN(qty))) {
+      setCart(prev => prev.filter(c => c.id !== numpadItem));
+    }
+    setNumpadItem(null); setNumpadValue('');
+  };
+  const handleScanSubmit = () => {
+    const q = scanInput.trim().toLowerCase();
+    if (!q) return;
+    const found = inventoryItems.find(i => i.barcode?.toLowerCase() === q || i.sku?.toLowerCase() === q);
+    if (found) { addToCart(found); addToast('success', `${found.name} added`); setScanInput(''); setScannerOpen(false); }
+    else { addToast('error', 'Item not found', `No item matched barcode/SKU "${scanInput}"`); }
   };
 
   const startNewBill = () => {
@@ -260,6 +296,7 @@ export function ShopBilling() {
     breakdownOpen, onBreakdownOpenChange: setBreakdownOpen,
     onInc: (id: string) => updateQuantity(id, 1),
     onDec: (id: string) => updateQuantity(id, -1),
+    onTapQty: openNumpad,
     onRemove: removeFromCart,
     onLineDiscount: updateLineDiscount,
     onClear: clearCart,
@@ -275,6 +312,12 @@ export function ShopBilling() {
 
   return (
     <div className="space-y-4 pb-24 lg:pb-0">
+      <SuccessOverlay
+        open={showSuccess}
+        onClose={() => setShowSuccess(false)}
+        title={mode === 'return' ? 'Credit note created' : 'Bill generated!'}
+        message={lastBill ? `${formatInvoiceNo(lastBill.id, lastBill.date)} · ${formatCurrency(Math.abs(lastBill.total))}` : undefined}
+      />
       {/* Compact header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
@@ -365,7 +408,7 @@ export function ShopBilling() {
                     options={[{ label: 'All categories', value: '' }, ...categories.map(c => ({ label: c, value: c }))]}
                   />
                 </div>
-                <Button variant="secondary" icon={<ScanBarcode size={16} />} className="sm:hidden" onClick={() => addToast('info', 'Scanner integration coming soon')}>Scan</Button>
+                <Button variant="secondary" icon={<ScanBarcode size={16} />} onClick={() => setScannerOpen(true)}>Scan</Button>
               </div>
               {categories.length > 0 && (
                 <div className="flex gap-1.5 mt-2 overflow-x-auto pb-1 -mx-1 px-1">
@@ -536,6 +579,63 @@ export function ShopBilling() {
         )}
       </Modal>
 
+      {/* Numpad modal */}
+      <Modal open={!!numpadItem} onClose={() => setNumpadItem(null)} title="Enter quantity" size="sm">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-full h-14 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center text-3xl font-bold tabular-nums text-gray-900 dark:text-white">
+            {numpadValue || '0'}
+          </div>
+          <div className="grid grid-cols-3 gap-2 w-full max-w-[220px]">
+            {[1,2,3,4,5,6,7,8,9].map(n => (
+              <button key={n} type="button" onClick={() => setNumpadValue(v => v === '0' ? String(n) : v + n)} className="h-12 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-lg font-semibold text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 active:scale-95 transition-transform">{n}</button>
+            ))}
+            <button type="button" onClick={() => setNumpadValue('')} className="h-12 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-500/20 active:scale-95 transition-transform">C</button>
+            <button type="button" onClick={() => setNumpadValue(v => v === '0' ? '0' : v + '0')} className="h-12 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-lg font-semibold text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 active:scale-95 transition-transform">0</button>
+            <button type="button" onClick={() => setNumpadValue(v => v.slice(0, -1))} className="h-12 rounded-xl bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-95 transition-transform">&#9003;</button>
+          </div>
+          <Button variant="primary" className="w-full max-w-[220px]" onClick={confirmNumpad}>Set quantity</Button>
+        </div>
+      </Modal>
+
+      {/* Barcode scanner modal */}
+      <Modal open={scannerOpen} onClose={() => setScannerOpen(false)} title="Scan barcode / SKU" size="sm">
+        <div className="space-y-4">
+          <div className="relative aspect-[4/3] rounded-xl bg-gradient-to-br from-gray-900 via-gray-800 to-gray-950 border border-gray-700 overflow-hidden">
+            {/* Corner brackets */}
+            <div className="absolute top-3 left-3 w-8 h-8 border-l-2 border-t-2 border-emerald-400 rounded-tl-md" />
+            <div className="absolute top-3 right-3 w-8 h-8 border-r-2 border-t-2 border-emerald-400 rounded-tr-md" />
+            <div className="absolute bottom-3 left-3 w-8 h-8 border-l-2 border-b-2 border-emerald-400 rounded-bl-md" />
+            <div className="absolute bottom-3 right-3 w-8 h-8 border-r-2 border-b-2 border-emerald-400 rounded-br-md" />
+            {/* Animated scan line */}
+            <div className="absolute left-6 right-6 top-1/2 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_12px_rgba(16,185,129,0.8)] animate-scan-line" />
+            {/* Mock barcode pattern */}
+            <div className="absolute inset-x-12 top-1/2 -translate-y-12 flex items-end justify-center gap-[1px] h-12 opacity-30">
+              {[2,4,2,3,1,5,2,1,3,2,4,2,1,3,2,4,2,3,1,5,2,1,3,2].map((w, i) => (
+                <span key={i} className="bg-white" style={{ width: `${w}px`, height: '100%' }} />
+              ))}
+            </div>
+            <div className="absolute bottom-3 inset-x-0 text-center">
+              <p className="text-xs text-emerald-400 font-medium tracking-wider uppercase">Scanning…</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">Point camera at barcode or type below</p>
+            </div>
+          </div>
+          <form onSubmit={e => { e.preventDefault(); handleScanSubmit(); }} className="flex gap-2">
+            <div className="relative flex-1">
+              <ScanBarcode size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                value={scanInput}
+                onChange={e => setScanInput(e.target.value)}
+                placeholder="e.g. 8901234567890 or SKU-001"
+                autoFocus
+                className="w-full h-10 pl-9 pr-3 rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none font-mono"
+              />
+            </div>
+            <Button variant="primary" type="submit" disabled={!scanInput.trim()}>Add</Button>
+          </form>
+          <p className="text-[11px] text-gray-500 text-center">Tip: USB barcode scanners work as keyboard input — just keep this field focused.</p>
+        </div>
+      </Modal>
+
       {/* Receipt modal */}
       <Modal open={!!receipt} onClose={() => setReceipt(null)} title={receipt?.isReturn ? 'Credit Note' : 'Bill Receipt'} size="md">
         {receipt && (() => {
@@ -688,6 +788,7 @@ interface CartPaneProps {
   onBreakdownOpenChange: (v: boolean) => void;
   onInc: (id: string) => void;
   onDec: (id: string) => void;
+  onTapQty: (id: string) => void;
   onRemove: (id: string) => void;
   onLineDiscount: (id: string, amount: number) => void;
   onClear: () => void;
@@ -716,7 +817,7 @@ function CartPane({
   note, onNoteChange,
   noteOpen, onNoteOpenChange,
   breakdownOpen, onBreakdownOpenChange,
-  onInc, onDec, onRemove, onLineDiscount, onClear, onHold, onGenerate,
+  onInc, onDec, onTapQty, onRemove, onLineDiscount, onClear, onHold, onGenerate,
   draftInvoice,
   splitMode, onSplitModeChange,
   splitTenders, onSplitTendersChange, splitRemaining,
@@ -787,7 +888,7 @@ function CartPane({
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <button onClick={() => onDec(item.id)} className="w-6 h-6 rounded-md border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"><Minus size={11} /></button>
-                    <span className="w-6 text-center text-[13px] font-semibold tabular-nums">{item.quantity}</span>
+                    <button onClick={() => onTapQty(item.id)} className="w-7 text-center text-[13px] font-semibold tabular-nums rounded-md hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors" title="Tap to enter exact quantity">{item.quantity}</button>
                     <button onClick={() => onInc(item.id)} className="w-6 h-6 rounded-md border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"><Plus size={11} /></button>
                   </div>
                   <p className="w-16 text-right text-[12px] font-semibold tabular-nums">{formatCurrency(item.price * item.quantity - (item.lineDiscount ?? 0))}</p>

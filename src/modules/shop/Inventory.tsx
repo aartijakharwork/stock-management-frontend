@@ -25,6 +25,8 @@ import { ExportMenu } from '../../components/ui/ExportMenu';
 import { CardListSkeleton, TableSkeleton } from '../../components/ui/Skeleton';
 import { Toggle } from '../../components/ui/Toggle';
 import { JargonHint } from '../../components/ui/JargonHint';
+import { Highlight } from '../../components/ui/Highlight';
+import { Checkbox } from '../../components/ui/Checkbox';
 import { inventoryItems as initialItems, suppliers, bills } from '../../data/shop-dummy';
 import { formatCurrency, generateId } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
@@ -128,6 +130,7 @@ export function ShopInventory() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showCost, setShowCost] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const { addToast } = useToast();
   const { can } = usePermissions();
@@ -264,6 +267,26 @@ export function ShopInventory() {
     addToast('success', 'Item deleted');
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const allPageSelected = pagination.pageData.length > 0 && pagination.pageData.every(i => selectedIds.has(i.id));
+  const somePageSelected = pagination.pageData.some(i => selectedIds.has(i.id));
+  const toggleSelectAll = () => {
+    if (allPageSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(pagination.pageData.map(i => i.id)));
+  };
+  const bulkDelete = () => {
+    if (!confirm(`Delete ${selectedIds.size} item${selectedIds.size === 1 ? '' : 's'}? This cannot be undone.`)) return;
+    setItems(prev => prev.filter(i => !selectedIds.has(i.id)));
+    addToast('success', `${selectedIds.size} item${selectedIds.size === 1 ? '' : 's'} deleted`);
+    setSelectedIds(new Set());
+  };
+
   const margin = calcMargin(form.costPrice, form.price);
   const supplierName = (id?: string) => suppliers.find(s => s.id === id)?.name;
 
@@ -361,6 +384,28 @@ export function ShopInventory() {
         </div>
       </Card>
 
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 animate-fade-in-up">
+          <Checkbox checked={allPageSelected} indeterminate={somePageSelected && !allPageSelected} onChange={toggleSelectAll} />
+          <span className="text-sm font-medium text-emerald-800 dark:text-emerald-300">{selectedIds.size} selected</span>
+          <div className="flex-1" />
+          <ExportMenu<InventoryItem>
+            baseName="inventory-selected"
+            title="Export selected"
+            meta={`${selectedIds.size} items`}
+            columns={INVENTORY_EXPORT_COLUMNS}
+            rows={items.filter(i => selectedIds.has(i.id))}
+            size="sm"
+          />
+          {canDelete && (
+            <Button variant="danger" size="sm" icon={<Trash2 size={14} />} onClick={bulkDelete}>
+              Delete ({selectedIds.size})
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>Cancel</Button>
+        </div>
+      )}
+
       {loading ? (
         <>
           <div className="hidden sm:block">
@@ -389,11 +434,21 @@ export function ShopInventory() {
           )}
         </Card>
       ) : (
-        <>
+        <div className="animate-fade-in-up">
           {/* Desktop table */}
           <div className="hidden sm:block">
             <Table
               columns={[
+                {
+                  key: 'select',
+                  header: <Checkbox checked={allPageSelected} indeterminate={somePageSelected && !allPageSelected} onChange={toggleSelectAll} />,
+                  className: 'w-10',
+                  render: (i: InventoryItem) => (
+                    <span onClick={e => e.stopPropagation()}>
+                      <Checkbox checked={selectedIds.has(i.id)} onChange={() => toggleSelect(i.id)} />
+                    </span>
+                  ),
+                },
                 {
                   key: 'item',
                   header: 'Item',
@@ -401,10 +456,10 @@ export function ShopInventory() {
                   render: i => (
                     <div>
                       <p className="text-xs text-gray-500 flex items-center gap-1">
-                        {i.category}
-                        {i.sku && <span className="font-mono text-gray-400">· {i.sku}</span>}
+                        <Highlight text={i.category} query={search} />
+                        {i.sku && <span className="font-mono text-gray-400">· <Highlight text={i.sku} query={search} /></span>}
                       </p>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{i.name}</p>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white"><Highlight text={i.name} query={search} /></p>
                       {i.supplierId && (
                         <p className="text-[11px] text-gray-400 mt-0.5">via {supplierName(i.supplierId)}</p>
                       )}
@@ -475,14 +530,17 @@ export function ShopInventory() {
           {/* Mobile cards */}
           <ul className="space-y-3 sm:hidden">
             {pagination.pageData.map(i => (
-              <li key={i.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+              <li key={i.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 hover-lift transition-transform">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
+                  <span className="mt-0.5 shrink-0" onClick={e => e.stopPropagation()}>
+                    <Checkbox checked={selectedIds.has(i.id)} onChange={() => toggleSelect(i.id)} />
+                  </span>
+                  <div className="min-w-0 flex-1">
                     <p className="text-xs text-gray-500 flex items-center gap-1">
-                      {i.category}
-                      {i.sku && <span className="font-mono text-gray-400 truncate">· {i.sku}</span>}
+                      <Highlight text={i.category} query={search} />
+                      {i.sku && <span className="font-mono text-gray-400 truncate">· <Highlight text={i.sku} query={search} /></span>}
                     </p>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">{i.name}</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white"><Highlight text={i.name} query={search} /></p>
                     <p className="text-xs text-gray-500 tabular-nums mt-0.5">Value: {formatCurrency(i.price * i.stock)}</p>
                     {showCost && i.costPrice ? (
                       <p className="text-xs text-gray-500 tabular-nums mt-0.5">Cost: {formatCurrency(i.costPrice)} · Margin <MarginBadge cost={i.costPrice} price={i.price} /></p>
@@ -505,7 +563,7 @@ export function ShopInventory() {
               </li>
             ))}
           </ul>
-        </>
+        </div>
       )}
 
       {/* Add / Edit Modal */}
@@ -608,99 +666,328 @@ export function ShopInventory() {
       </Modal>
 
       {/* Bulk import modal */}
-      <BulkImportModal open={importOpen} onClose={() => setImportOpen(false)} />
+      <BulkImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImport={(rows) => {
+          const imported: InventoryItem[] = rows.map(r => ({ id: generateId(), ...r }));
+          setItems(prev => [...imported, ...prev]);
+          addToast('success', `${imported.length} item${imported.length === 1 ? '' : 's'} imported`);
+          setImportOpen(false);
+        }}
+      />
     </div>
   );
+}
+
+interface ParsedRow {
+  raw: Record<string, string>;
+  data: Omit<InventoryItem, 'id'>;
+  errors: string[];
+  rowNum: number;
 }
 
 interface BulkImportModalProps {
   open: boolean;
   onClose: () => void;
+  onImport: (rows: Omit<InventoryItem, 'id'>[]) => void;
 }
 
-function BulkImportModal({ open, onClose }: BulkImportModalProps) {
+const REQUIRED_HEADERS = ['name', 'price', 'stock', 'category'];
+const ALL_HEADERS = ['name', 'sku', 'barcode', 'category', 'unit', 'costPrice', 'price', 'stock', 'reorderLevel', 'hsn', 'taxRate', 'supplierId'];
+
+function parseCSV(text: string): { headers: string[]; rows: string[][] } {
+  const lines = text.replace(/\r/g, '').split('\n').filter(l => l.trim().length > 0);
+  if (lines.length === 0) return { headers: [], rows: [] };
+
+  const splitLine = (line: string): string[] => {
+    const out: string[] = [];
+    let cur = '';
+    let inQuote = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuote) {
+        if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+        else if (ch === '"') { inQuote = false; }
+        else { cur += ch; }
+      } else {
+        if (ch === ',') { out.push(cur); cur = ''; }
+        else if (ch === '"') { inQuote = true; }
+        else { cur += ch; }
+      }
+    }
+    out.push(cur);
+    return out.map(s => s.trim());
+  };
+
+  const headers = splitLine(lines[0]).map(h => h.trim());
+  const rows = lines.slice(1).map(splitLine);
+  return { headers, rows };
+}
+
+function BulkImportModal({ open, onClose, onImport }: BulkImportModalProps) {
   const [fileName, setFileName] = useState<string | null>(null);
-  const [parsedCount, setParsedCount] = useState<number | null>(null);
+  const [parsed, setParsed] = useState<ParsedRow[] | null>(null);
+  const [headerError, setHeaderError] = useState<string | null>(null);
+  const [unknownHeaders, setUnknownHeaders] = useState<string[]>([]);
   const [dragActive, setDragActive] = useState(false);
+  const [showOnlyErrors, setShowOnlyErrors] = useState(false);
   const { addToast } = useToast();
+
+  const reset = () => {
+    setFileName(null);
+    setParsed(null);
+    setHeaderError(null);
+    setUnknownHeaders([]);
+    setShowOnlyErrors(false);
+  };
+
+  useEffect(() => {
+    if (!open) reset();
+  }, [open]);
 
   const handleFile = (file: File | null) => {
     if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.csv') && file.type !== 'text/csv') {
+      addToast('error', 'Please upload a .csv file');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      addToast('error', 'File too large (max 5 MB)');
+      return;
+    }
     setFileName(file.name);
-    const fakeRows = Math.floor(Math.random() * 30) + 5;
-    setParsedCount(fakeRows);
+    const reader = new FileReader();
+    reader.onload = e => {
+      const text = String(e.target?.result ?? '');
+      const { headers, rows } = parseCSV(text);
+
+      const lower = headers.map(h => h.toLowerCase());
+      const missing = REQUIRED_HEADERS.filter(h => !lower.includes(h.toLowerCase()));
+      if (missing.length > 0) {
+        setHeaderError(`Missing required column${missing.length === 1 ? '' : 's'}: ${missing.join(', ')}`);
+        setParsed([]);
+        setUnknownHeaders([]);
+        return;
+      }
+      setHeaderError(null);
+      setUnknownHeaders(headers.filter(h => !ALL_HEADERS.some(a => a.toLowerCase() === h.toLowerCase())));
+
+      const idx = (h: string) => lower.indexOf(h.toLowerCase());
+      const supplierIds = new Set(suppliers.map(s => s.id));
+
+      const parsedRows: ParsedRow[] = rows.map((cells, i) => {
+        const get = (h: string) => { const k = idx(h); return k >= 0 ? (cells[k] ?? '').trim() : ''; };
+        const raw: Record<string, string> = {};
+        headers.forEach((h, k) => { raw[h] = (cells[k] ?? '').trim(); });
+
+        const errors: string[] = [];
+        const name = get('name');
+        const price = Number(get('price'));
+        const stock = Number(get('stock'));
+        const costPrice = get('costPrice') ? Number(get('costPrice')) : 0;
+        const taxRate = get('taxRate') ? Number(get('taxRate')) : DEFAULT_TAX_RATE;
+        const reorderLevel = get('reorderLevel') ? Number(get('reorderLevel')) : DEFAULT_REORDER;
+        const supplierId = get('supplierId') || undefined;
+
+        if (!name) errors.push('name required');
+        if (!get('category')) errors.push('category required');
+        if (Number.isNaN(price) || price <= 0) errors.push('price invalid');
+        if (Number.isNaN(stock) || stock < 0) errors.push('stock invalid');
+        if (costPrice && costPrice > price) errors.push('cost > price');
+        if (Number.isNaN(taxRate)) errors.push('taxRate invalid');
+        if (Number.isNaN(reorderLevel)) errors.push('reorderLevel invalid');
+        if (supplierId && !supplierIds.has(supplierId)) errors.push(`supplier "${supplierId}" not found`);
+
+        return {
+          raw,
+          rowNum: i + 2,
+          errors,
+          data: {
+            name,
+            category: get('category'),
+            unit: get('unit') || 'piece',
+            sku: get('sku') || undefined,
+            barcode: get('barcode') || undefined,
+            costPrice,
+            price,
+            stock,
+            reorderLevel,
+            hsn: get('hsn') || undefined,
+            taxRate,
+            supplierId,
+          },
+        };
+      });
+      setParsed(parsedRows);
+    };
+    reader.onerror = () => addToast('error', 'Failed to read file');
+    reader.readAsText(file);
   };
 
+  const validRows = parsed?.filter(r => r.errors.length === 0) ?? [];
+  const errorRows = parsed?.filter(r => r.errors.length > 0) ?? [];
+  const visibleRows = showOnlyErrors ? errorRows : (parsed ?? []);
+
   const handleImport = () => {
-    if (!fileName) return;
-    addToast('success', `${parsedCount} rows queued for import`);
-    setFileName(null);
-    setParsedCount(null);
-    onClose();
+    if (!parsed || validRows.length === 0) return;
+    onImport(validRows.map(r => r.data));
+  };
+
+  const downloadTemplate = () => {
+    const tpl = 'name,sku,barcode,category,unit,costPrice,price,stock,reorderLevel,hsn,taxRate,supplierId\n' +
+                'Sample Item,SKU-001,8901234567899,Oils,bottle,200,300,50,10,27101981,18,S1';
+    const blob = new Blob([tpl], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'inventory-template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Bulk import inventory" size="md">
+    <Modal open={open} onClose={onClose} title="Bulk import inventory" size="lg">
       <div className="space-y-4">
-        <div className="text-sm text-gray-600 dark:text-gray-400">
-          Upload a CSV with these headers: <code className="text-xs bg-gray-100 dark:bg-gray-800 rounded px-1">name, sku, barcode, category, unit, costPrice, price, stock, reorderLevel, hsn, taxRate, supplierId</code>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            const tpl = 'name,sku,barcode,category,unit,costPrice,price,stock,reorderLevel,hsn,taxRate,supplierId\n' +
-                        'Sample Item,SKU-001,8901234567899,Oils,bottle,200,300,50,10,27101981,18,S1';
-            const blob = new Blob([tpl], { type: 'text/csv' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'inventory-template.csv';
-            a.click();
-            URL.revokeObjectURL(url);
-          }}
-          className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline"
-        >
-          ↓ Download CSV template
-        </button>
+        {!parsed && !headerError && (
+          <>
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              Upload a CSV with these columns. <strong>Required:</strong> name, category, price, stock.
+              <div className="mt-2 flex flex-wrap gap-1">
+                {ALL_HEADERS.map(h => (
+                  <code key={h} className={`text-[11px] rounded px-1.5 py-0.5 ${REQUIRED_HEADERS.includes(h) ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-semibold' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`}>{h}{REQUIRED_HEADERS.includes(h) && ' *'}</code>
+                ))}
+              </div>
+            </div>
+            <button type="button" onClick={downloadTemplate} className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline">
+              ↓ Download CSV template
+            </button>
+          </>
+        )}
 
-        <label
-          onDragOver={e => { e.preventDefault(); setDragActive(true); }}
-          onDragLeave={() => setDragActive(false)}
-          onDrop={e => {
-            e.preventDefault();
-            setDragActive(false);
-            handleFile(e.dataTransfer.files[0] ?? null);
-          }}
-          className={`flex flex-col items-center justify-center gap-2 p-8 rounded-xl border-2 border-dashed cursor-pointer transition-colors ${
-            dragActive
-              ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10'
-              : 'border-gray-300 dark:border-gray-700 hover:border-emerald-400 hover:bg-gray-50 dark:hover:bg-gray-800/40'
-          }`}
-        >
-          <Upload size={28} className="text-gray-400" />
-          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {fileName ? fileName : 'Drag CSV here or click to browse'}
-          </p>
-          {parsedCount != null && (
-            <p className="text-xs text-emerald-600 dark:text-emerald-400">
-              ✓ Parsed {parsedCount} rows · ready to import
+        {!parsed && (
+          <label
+            onDragOver={e => { e.preventDefault(); setDragActive(true); }}
+            onDragLeave={() => setDragActive(false)}
+            onDrop={e => {
+              e.preventDefault();
+              setDragActive(false);
+              handleFile(e.dataTransfer.files[0] ?? null);
+            }}
+            className={`flex flex-col items-center justify-center gap-2 p-8 rounded-xl border-2 border-dashed cursor-pointer transition-colors ${
+              dragActive
+                ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 scale-[1.01]'
+                : 'border-gray-300 dark:border-gray-700 hover:border-emerald-400 hover:bg-gray-50 dark:hover:bg-gray-800/40'
+            }`}
+          >
+            <Upload size={32} className={dragActive ? 'text-emerald-500' : 'text-gray-400'} />
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {dragActive ? 'Drop to upload' : 'Drag CSV here or click to browse'}
             </p>
-          )}
-          <input
-            type="file"
-            accept=".csv,text/csv"
-            className="hidden"
-            onChange={e => handleFile(e.target.files?.[0] ?? null)}
-          />
-        </label>
+            <p className="text-xs text-gray-500">.csv · max 5 MB</p>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={e => handleFile(e.target.files?.[0] ?? null)}
+            />
+          </label>
+        )}
 
-        <div className="text-xs text-gray-500 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg p-3 text-amber-800 dark:text-amber-400">
-          <strong>Note:</strong> CSV import is currently in preview. Items will be queued and reviewed before they hit live inventory.
-        </div>
+        {headerError && (
+          <div className="rounded-lg border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 p-4">
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={18} className="text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-red-700 dark:text-red-300">Cannot parse {fileName}</p>
+                <p className="text-xs text-red-600 dark:text-red-400 mt-1">{headerError}</p>
+              </div>
+            </div>
+            <div className="mt-3">
+              <Button variant="secondary" size="sm" onClick={reset}>Try another file</Button>
+            </div>
+          </div>
+        )}
 
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={handleImport} disabled={!fileName}>Import {parsedCount ?? ''} rows</Button>
+        {parsed && parsed.length > 0 && !headerError && (
+          <>
+            <div className="flex flex-wrap items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="font-medium text-gray-900 dark:text-white">{fileName}</span>
+                <span className="text-gray-400">·</span>
+                <span className="text-emerald-700 dark:text-emerald-400 font-medium">{validRows.length} valid</span>
+                {errorRows.length > 0 && (
+                  <>
+                    <span className="text-gray-400">·</span>
+                    <span className="text-red-700 dark:text-red-400 font-medium">{errorRows.length} with errors</span>
+                  </>
+                )}
+              </div>
+              <div className="flex-1" />
+              {errorRows.length > 0 && (
+                <label className="flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-300">
+                  <input type="checkbox" checked={showOnlyErrors} onChange={e => setShowOnlyErrors(e.target.checked)} className="rounded" />
+                  Show errors only
+                </label>
+              )}
+              <Button variant="ghost" size="sm" onClick={reset}>Clear</Button>
+            </div>
+
+            {unknownHeaders.length > 0 && (
+              <div className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded p-2">
+                Unknown columns ignored: <code>{unknownHeaders.join(', ')}</code>
+              </div>
+            )}
+
+            <div className="max-h-[360px] overflow-auto border border-gray-200 dark:border-gray-700 rounded-lg">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0">
+                  <tr className="text-gray-500">
+                    <th className="text-left px-2 py-2 font-medium">#</th>
+                    <th className="text-left px-2 py-2 font-medium">Status</th>
+                    <th className="text-left px-2 py-2 font-medium">Name</th>
+                    <th className="text-left px-2 py-2 font-medium">SKU</th>
+                    <th className="text-left px-2 py-2 font-medium">Category</th>
+                    <th className="text-right px-2 py-2 font-medium">Cost</th>
+                    <th className="text-right px-2 py-2 font-medium">Price</th>
+                    <th className="text-right px-2 py-2 font-medium">Stock</th>
+                    <th className="text-left px-2 py-2 font-medium">Issues</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {visibleRows.map(r => (
+                    <tr key={r.rowNum} className={r.errors.length > 0 ? 'bg-red-50/40 dark:bg-red-500/5' : ''}>
+                      <td className="px-2 py-1.5 text-gray-500 tabular-nums">{r.rowNum}</td>
+                      <td className="px-2 py-1.5">
+                        {r.errors.length === 0
+                          ? <Badge variant="success">OK</Badge>
+                          : <Badge variant="danger">Skip</Badge>}
+                      </td>
+                      <td className="px-2 py-1.5 text-gray-900 dark:text-white font-medium truncate max-w-[160px]">{r.data.name || <span className="text-gray-400 italic">missing</span>}</td>
+                      <td className="px-2 py-1.5 text-gray-600 dark:text-gray-400 font-mono">{r.data.sku || '—'}</td>
+                      <td className="px-2 py-1.5 text-gray-600 dark:text-gray-400">{r.data.category || '—'}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{r.data.costPrice ? formatCurrency(r.data.costPrice) : '—'}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{Number.isFinite(r.data.price) ? formatCurrency(r.data.price) : '—'}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{Number.isFinite(r.data.stock) ? r.data.stock : '—'}</td>
+                      <td className="px-2 py-1.5 text-red-600 dark:text-red-400">{r.errors.join(' · ')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        <div className="flex justify-between items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+          <p className="text-xs text-gray-500">
+            {parsed ? (validRows.length > 0 ? `Importing valid rows only.${errorRows.length > 0 ? ' Error rows will be skipped.' : ''}` : 'No valid rows to import.') : 'Drag-drop or browse to load a CSV file.'}
+          </p>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button variant="primary" onClick={handleImport} disabled={!parsed || validRows.length === 0}>
+              Import {validRows.length > 0 ? validRows.length : ''} {validRows.length === 1 ? 'item' : 'items'}
+            </Button>
+          </div>
         </div>
       </div>
     </Modal>
