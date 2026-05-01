@@ -20,6 +20,7 @@ import { customers, bills as initialBills } from '../../data/shop-dummy';
 import { formatCurrency, formatDate, generateId, formatInvoiceNo, gstBreakdown, formatRelativeTime } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { useHeldBills } from '../../hooks/useHeldBills';
+import { useQuickCustomers } from '../../hooks/useQuickCustomers';
 import { useShopProfile } from '../../hooks/useShopProfile';
 import { useShopCatalog } from '../../context/ShopCatalogContext';
 import { playSuccess, playError, playClick, hapticSuccess, hapticTap, hapticError } from '../../utils/feedback';
@@ -36,12 +37,24 @@ const PAYMENT_METHODS: { value: TenderMethod; label: string; icon: typeof Bankno
 
 type Mode = 'sale' | 'return';
 
+// MRP-vs-selling-price helpers — only meaningful when an item has a real MRP
+// stored that's higher than the selling price.
+const hasMrpDiscount = (it: { mrp?: number; price: number }) =>
+  typeof it.mrp === 'number' && it.mrp > it.price;
+const itemMrpSavings = (it: { mrp?: number; price: number; quantity?: number }) =>
+  hasMrpDiscount(it) ? (it.mrp! - it.price) * (it.quantity ?? 1) : 0;
+const totalMrpSavings = (items: { mrp?: number; price: number; quantity: number }[]) =>
+  items.reduce((s, it) => s + itemMrpSavings(it), 0);
+
 export function ShopBilling() {
   const { items: inventoryItems, allCategoryNames } = useShopCatalog();
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerId, setCustomerId] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerOpen, setCustomerOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [discount, setDiscount] = useState<number>(0);
   const [discountType, setDiscountType] = useState<'flat' | 'percent'>('flat');
@@ -67,13 +80,17 @@ export function ShopBilling() {
   const { addToast } = useToast();
   const { held, add: addHeld, remove: removeHeld } = useHeldBills();
   const { profile, invoice: invoiceTpl } = useShopProfile();
+  const { customers: quickCustomers, add: addQuickCustomer } = useQuickCustomers();
 
   const categories = allCategoryNames;
-  const customerOptions = useMemo(() => [
-    { label: 'Walk-in customer', value: '' },
-    ...customers.map(c => ({ label: `${c.name} (${c.phone})`, value: c.id })),
-  ], []);
-  const selectedCustomer = customers.find(c => c.id === customerId);
+  const allKnownCustomers = useMemo(() => [...customers, ...quickCustomers], [quickCustomers]);
+  const attachedCustomer = customerId ? allKnownCustomers.find(c => c.id === customerId) : undefined;
+  const hasCustomerInfo = !!attachedCustomer || !!customerName.trim() || !!customerPhone.trim();
+  // Backwards-compat for places still reading "selectedCustomer"
+  const selectedCustomer = attachedCustomer
+    ?? (customerName.trim() || customerPhone.trim()
+      ? { name: customerName.trim() || 'Customer', phone: customerPhone.trim(), pendingAmount: 0 }
+      : undefined);
 
   const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -150,6 +167,12 @@ export function ShopBilling() {
   const validateBeforeBill = (): string | null => {
     if (cart.length === 0) return 'Cart is empty';
     if (mode === 'return' && !returnRefBillId) return 'Pick the original bill being returned';
+    const willBeUdhaar = !splitMode
+      ? (paymentMethod as string) === 'udhaar'
+      : splitTenders.some(t => t.method === 'udhaar' && t.amount > 0);
+    if (mode === 'sale' && willBeUdhaar && !hasCustomerInfo) {
+      return 'Add a name or phone — needed to track who owes';
+    }
     if (splitMode) {
       if (Math.abs(splitTotal - Math.abs(total)) > 1) return `Split tenders ${formatCurrency(splitTotal)} ≠ Total ${formatCurrency(Math.abs(total))}`;
     }
@@ -157,7 +180,9 @@ export function ShopBilling() {
   };
 
   const buildBill = (): Bill => {
-    const customer = customers.find(c => c.id === customerId);
+    const customer = attachedCustomer;
+    const typedName = customerName.trim();
+    const typedPhone = customerPhone.trim();
     const totalDiscount = lineDiscountTotal + billDiscountAmount;
     const allUdhaar = !splitMode && (paymentMethod as string) === 'udhaar';
     const tenders = splitMode ? splitTenders.filter(t => t.amount > 0) : undefined;
@@ -165,8 +190,9 @@ export function ShopBilling() {
     return {
       id: 'B' + generateId().toUpperCase().slice(0, 7),
       date: new Date().toISOString(),
-      customerName: customer?.name || 'Walk-in',
+      customerName: customer?.name || typedName || (typedPhone ? `Customer · ${typedPhone}` : 'Walk-in'),
       customerId: customer?.id,
+      customerPhone: customer?.phone || typedPhone || undefined,
       items: cart,
       subtotal,
       discount: totalDiscount,
@@ -191,6 +217,11 @@ export function ShopBilling() {
 
   const finalizeBill = () => {
     const bill = buildBill();
+    // If this was an ad-hoc customer (no id but typed name/phone), remember
+    // them so they show up as a suggestion next time.
+    if (!attachedCustomer && (customerName.trim() || customerPhone.trim())) {
+      addQuickCustomer({ name: customerName.trim(), phone: customerPhone.trim() });
+    }
     setLastBill(bill);
     setMobileCartOpen(false);
     setConfirmOpen(false);
@@ -227,6 +258,9 @@ export function ShopBilling() {
   const startNewBill = () => {
     clearCart();
     setCustomerId('');
+    setCustomerName('');
+    setCustomerPhone('');
+    setCustomerOpen(false);
     setPaymentMethod('cash');
     setReceipt(null);
     setMode('sale');
@@ -235,16 +269,23 @@ export function ShopBilling() {
 
   const holdBill = () => {
     if (cart.length === 0) return;
-    const customer = customers.find(c => c.id === customerId);
+    const customer = attachedCustomer;
+    const typedName = customerName.trim();
+    const typedPhone = customerPhone.trim();
     const entry = addHeld({
-      customerName: customer?.name || 'Walk-in',
+      customerName: customer?.name || typedName || (typedPhone ? `Customer · ${typedPhone}` : 'Walk-in'),
       customerId: customer?.id,
+      customerPhone: customer?.phone || typedPhone || undefined,
       items: cart,
       total,
       note: note.trim() || undefined,
     });
     addToast('info', 'Bill held as draft', `Ref ${entry.ref} · ${itemCount} item${itemCount === 1 ? '' : 's'} · ${formatCurrency(total)}`);
     clearCart();
+    setCustomerId('');
+    setCustomerName('');
+    setCustomerPhone('');
+    setCustomerOpen(false);
   };
 
   const resumeHeld = (ref: string) => {
@@ -252,6 +293,14 @@ export function ShopBilling() {
     if (!h) return;
     setCart(h.items);
     setCustomerId(h.customerId ?? '');
+    // Restore typed-name / typed-phone for ad-hoc held bills
+    if (!h.customerId) {
+      setCustomerName(h.customerName?.startsWith('Customer · ') ? '' : (h.customerName ?? ''));
+      setCustomerPhone(h.customerPhone ?? '');
+    } else {
+      setCustomerName('');
+      setCustomerPhone('');
+    }
     setNote(h.note ?? '');
     removeHeld(ref);
     setHeldOpen(false);
@@ -268,7 +317,7 @@ export function ShopBilling() {
       receipt.isUdhaar ? '⚠ Saved as Udhaar (unpaid)' : `Paid via ${receipt.paymentMethod?.toUpperCase() ?? 'Split'}`,
     ];
     const text = encodeURIComponent(lines.join('\n'));
-    const phone = customers.find(c => c.id === receipt.customerId)?.phone;
+    const phone = customers.find(c => c.id === receipt.customerId)?.phone || receipt.customerPhone;
     const url = phone ? `https://wa.me/91${phone}?text=${text}` : `https://wa.me/?text=${text}`;
     window.open(url, '_blank');
   };
@@ -286,10 +335,35 @@ export function ShopBilling() {
     []
   );
 
+  const handlePaymentMethodChange = (m: PaymentMethod) => {
+    setPaymentMethod(m);
+    if (m === 'udhaar' && !hasCustomerInfo) setCustomerOpen(true);
+  };
+
+  const attachCustomer = (c: { id?: string; name: string; phone: string }) => {
+    setCustomerId(c.id ?? '');
+    setCustomerName(c.id ? '' : c.name);
+    setCustomerPhone(c.id ? '' : c.phone);
+    setCustomerOpen(false);
+  };
+
+  const detachCustomer = () => {
+    setCustomerId('');
+    setCustomerName('');
+    setCustomerPhone('');
+    setCustomerOpen(false);
+  };
+
   const cartProps: CartPaneProps = {
     cart, itemCount, subtotal, billDiscountAmount, lineDiscountTotal, total: Math.abs(total),
-    customerId, onCustomerChange: setCustomerId, customerOptions, selectedCustomer,
-    paymentMethod, onPaymentMethodChange: setPaymentMethod,
+    attachedCustomer,
+    customerName, onCustomerNameChange: setCustomerName,
+    customerPhone, onCustomerPhoneChange: setCustomerPhone,
+    customerOpen, onCustomerOpenChange: setCustomerOpen,
+    customerSuggestions: allKnownCustomers,
+    onAttachCustomer: attachCustomer,
+    onDetachCustomer: detachCustomer,
+    paymentMethod, onPaymentMethodChange: handlePaymentMethodChange,
     discount, discountType,
     onDiscountChange: setDiscount, onDiscountTypeChange: setDiscountType,
     discountOpen, onDiscountOpenChange: setDiscountOpen,
@@ -313,7 +387,7 @@ export function ShopBilling() {
   };
 
   return (
-    <div className="space-y-4 pb-24 lg:pb-0">
+    <div className="space-y-4 pb-24 lg:pb-0 lg:h-[calc(100vh-7rem)] lg:flex lg:flex-col lg:space-y-3 lg:overflow-hidden">
       <SuccessOverlay
         open={showSuccess}
         onClose={() => setShowSuccess(false)}
@@ -389,9 +463,9 @@ export function ShopBilling() {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px] lg:flex-1 lg:min-h-0">
         {/* LEFT — item picker */}
-        <section className="space-y-3 min-w-0">
+        <section className="space-y-3 min-w-0 lg:flex lg:flex-col lg:min-h-0 lg:space-y-2">
           <Card padding={false}>
             <div className="p-3">
               <div className="flex flex-col sm:flex-row gap-2">
@@ -444,6 +518,7 @@ export function ShopBilling() {
             </div>
           </Card>
 
+          <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:-mr-1 lg:pr-1">
           {filteredItems.length === 0 ? (
             <Card>
               <EmptyState
@@ -487,7 +562,12 @@ export function ShopBilling() {
                       <p className="text-[10px] text-gray-500 truncate mt-0.5">{item.sku ? `${item.sku} · ` : ''}{item.category}</p>
                     </div>
                     <div className="flex items-baseline justify-between gap-1 mt-auto">
-                      <span className="text-emerald-700 dark:text-emerald-400 font-semibold tabular-nums text-sm">{formatCurrency(item.price)}</span>
+                      <div className="min-w-0 flex items-baseline gap-1.5">
+                        <span className="text-emerald-700 dark:text-emerald-400 font-semibold tabular-nums text-sm">{formatCurrency(item.price)}</span>
+                        {hasMrpDiscount(item) && (
+                          <span className="text-[10px] text-gray-400 tabular-nums line-through">{formatCurrency(item.mrp!)}</span>
+                        )}
+                      </div>
                       <span className="text-[10px] text-gray-400 tabular-nums">{item.stock} {item.unit}</span>
                     </div>
                   </button>
@@ -495,13 +575,12 @@ export function ShopBilling() {
               })}
             </div>
           )}
+          </div>
         </section>
 
-        {/* RIGHT — sticky cart */}
-        <aside className="hidden lg:block">
-          <div className="sticky top-[88px]">
-            <CartPane {...cartProps} />
-          </div>
+        {/* RIGHT — full-height cart */}
+        <aside className="hidden lg:block lg:min-h-0 lg:h-full">
+          <CartPane {...cartProps} />
         </aside>
       </div>
 
@@ -545,6 +624,12 @@ export function ShopBilling() {
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3 bg-gray-50 dark:bg-gray-800/40 space-y-1.5">
             <div className="flex justify-between text-sm"><span className="text-gray-500">Customer</span><span className="font-medium">{selectedCustomer?.name ?? 'Walk-in'}</span></div>
             <div className="flex justify-between text-sm"><span className="text-gray-500">Items</span><span className="font-medium">{itemCount}</span></div>
+            {totalMrpSavings(cart) > 0 && (
+              <>
+                <div className="flex justify-between text-sm"><span className="text-gray-500">MRP total</span><span className="font-medium tabular-nums line-through text-gray-400">{formatCurrency(Math.abs(total) + totalMrpSavings(cart))}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-gray-500">You saved</span><span className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">− {formatCurrency(totalMrpSavings(cart))}</span></div>
+              </>
+            )}
             <div className="flex justify-between text-sm"><span className="text-gray-500">Total</span><span className="font-bold text-lg tabular-nums">{formatCurrency(Math.abs(total))}</span></div>
             <div className="flex justify-between text-sm"><span className="text-gray-500">Payment</span><span className="font-medium uppercase">{splitMode ? 'Split' : paymentMethod}</span></div>
           </div>
@@ -678,7 +763,12 @@ export function ShopBilling() {
                         <div className="flex justify-between tabular-nums">
                           <span className="flex-1 text-gray-500">&nbsp;</span>
                           <span className="w-10 text-right">{it.quantity}</span>
-                          <span className="w-16 text-right">{it.price.toLocaleString('en-IN')}</span>
+                          <span className="w-16 text-right">
+                            {hasMrpDiscount(it) && (
+                              <span className="line-through text-gray-400 mr-1">{it.mrp!.toLocaleString('en-IN')}</span>
+                            )}
+                            {it.price.toLocaleString('en-IN')}
+                          </span>
                           <span className="w-16 text-right">{(it.price * it.quantity - (it.lineDiscount ?? 0)).toLocaleString('en-IN')}</span>
                         </div>
                         {(it.lineDiscount ?? 0) > 0 && (
@@ -690,6 +780,12 @@ export function ShopBilling() {
                   <div className="my-2 border-t border-dashed border-gray-400" />
                   <div className="space-y-0.5 text-[11px] tabular-nums">
                     <div className="flex justify-between"><span>Items</span><span>{itemCountTotal}</span></div>
+                    {totalMrpSavings(receipt.items) > 0 && (
+                      <>
+                        <div className="flex justify-between"><span>MRP total</span><span className="line-through text-gray-500">{(receipt.items.reduce((s, it) => s + (it.mrp ?? it.price) * it.quantity, 0)).toLocaleString('en-IN')}</span></div>
+                        <div className="flex justify-between text-emerald-700"><span>You saved</span><span>− {totalMrpSavings(receipt.items).toLocaleString('en-IN')}</span></div>
+                      </>
+                    )}
                     <div className="flex justify-between"><span>Subtotal</span><span>{(receipt.subtotal || Math.abs(receipt.total)).toLocaleString('en-IN')}</span></div>
                     {(receipt.discount ?? 0) > 0 && <div className="flex justify-between"><span>Discount</span><span>− {receipt.discount!.toLocaleString('en-IN')}</span></div>}
                     <div className="flex justify-between"><span>Taxable</span><span>{tax.taxable.toLocaleString('en-IN')}</span></div>
@@ -770,10 +866,16 @@ interface CartPaneProps {
   billDiscountAmount: number;
   lineDiscountTotal: number;
   total: number;
-  customerId: string;
-  onCustomerChange: (v: string) => void;
-  customerOptions: { label: string; value: string }[];
-  selectedCustomer: { name: string; phone: string; pendingAmount: number } | undefined;
+  attachedCustomer: { id: string; name: string; phone: string; pendingAmount: number } | undefined;
+  customerName: string;
+  onCustomerNameChange: (v: string) => void;
+  customerPhone: string;
+  onCustomerPhoneChange: (v: string) => void;
+  customerOpen: boolean;
+  onCustomerOpenChange: (v: boolean) => void;
+  customerSuggestions: { id: string; name: string; phone: string; pendingAmount: number }[];
+  onAttachCustomer: (c: { id?: string; name: string; phone: string }) => void;
+  onDetachCustomer: () => void;
   paymentMethod: PaymentMethod;
   onPaymentMethodChange: (v: PaymentMethod) => void;
   discount: number;
@@ -812,7 +914,12 @@ interface CartPaneProps {
 
 function CartPane({
   cart, itemCount, subtotal, billDiscountAmount, lineDiscountTotal, total,
-  customerId, onCustomerChange, customerOptions, selectedCustomer,
+  attachedCustomer,
+  customerName, onCustomerNameChange,
+  customerPhone, onCustomerPhoneChange,
+  customerOpen, onCustomerOpenChange,
+  customerSuggestions,
+  onAttachCustomer, onDetachCustomer,
   paymentMethod, onPaymentMethodChange,
   discount, discountType, onDiscountChange, onDiscountTypeChange,
   discountOpen, onDiscountOpenChange,
@@ -843,7 +950,7 @@ function CartPane({
   };
 
   return (
-    <Card padding={false} className="flex flex-col max-h-[calc(100vh-120px)] overflow-hidden">
+    <Card padding={false} className="flex flex-col h-full max-h-[calc(100vh-120px)] lg:max-h-none overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[10px] font-semibold tracking-wider uppercase text-gray-500">{mode === 'return' ? 'Credit note' : 'Current Bill'}</p>
@@ -856,18 +963,19 @@ function CartPane({
       </div>
 
       <div className="px-4 py-2.5 border-b border-gray-200 dark:border-gray-800">
-        <Dropdown options={customerOptions} value={customerId} onChange={e => onCustomerChange(e.target.value)} />
-        {selectedCustomer && (
-          <div className="mt-2 flex items-center gap-2 text-[11px]">
-            <Phone size={11} className="text-gray-400" />
-            <a href={`tel:${selectedCustomer.phone}`} className="text-gray-600 dark:text-gray-400 hover:text-emerald-600">{selectedCustomer.phone}</a>
-            {selectedCustomer.pendingAmount > 0 && (
-              <span className="ml-auto text-amber-600 dark:text-amber-400 font-medium tabular-nums">
-                Udhaar {formatCurrency(selectedCustomer.pendingAmount)}
-              </span>
-            )}
-          </div>
-        )}
+        <CustomerBlock
+          attached={attachedCustomer}
+          name={customerName}
+          phone={customerPhone}
+          onNameChange={onCustomerNameChange}
+          onPhoneChange={onCustomerPhoneChange}
+          open={customerOpen}
+          onOpenChange={onCustomerOpenChange}
+          suggestions={customerSuggestions}
+          onAttach={onAttachCustomer}
+          onDetach={onDetachCustomer}
+          isUdhaar={isUdhaar}
+        />
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-[160px]">
@@ -886,7 +994,13 @@ function CartPane({
                 <div className="flex items-center gap-2">
                   <div className="min-w-0 flex-1">
                     <p className="text-[13px] font-medium text-gray-900 dark:text-white truncate">{item.name}</p>
-                    <p className="text-[10px] text-gray-500 tabular-nums">{formatCurrency(item.price)} × {item.quantity}{(item.lineDiscount ?? 0) > 0 ? ` − ₹${item.lineDiscount}` : ''}</p>
+                    <p className="text-[10px] text-gray-500 tabular-nums">
+                      {hasMrpDiscount(item) && (
+                        <span className="line-through text-gray-400 mr-1">{formatCurrency(item.mrp!)}</span>
+                      )}
+                      <span>{formatCurrency(item.price)} × {item.quantity}</span>
+                      {(item.lineDiscount ?? 0) > 0 ? <span> − ₹{item.lineDiscount}</span> : null}
+                    </p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <button onClick={() => onDec(item.id)} className="w-6 h-6 rounded-md border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"><Minus size={11} /></button>
@@ -1048,5 +1162,192 @@ function CartPane({
         </div>
       )}
     </Card>
+  );
+}
+
+interface CustomerBlockProps {
+  attached: { id: string; name: string; phone: string; pendingAmount: number } | undefined;
+  name: string;
+  phone: string;
+  onNameChange: (v: string) => void;
+  onPhoneChange: (v: string) => void;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  suggestions: { id: string; name: string; phone: string; pendingAmount: number }[];
+  onAttach: (c: { id?: string; name: string; phone: string }) => void;
+  onDetach: () => void;
+  isUdhaar: boolean;
+}
+
+function CustomerBlock({
+  attached, name, phone, onNameChange, onPhoneChange,
+  open, onOpenChange, suggestions, onAttach, onDetach, isUdhaar,
+}: CustomerBlockProps) {
+  const typedName = name.trim();
+  const typedPhone = phone.trim();
+  const hasTyped = !!typedName || !!typedPhone;
+
+  // Suggestions: filter by typed name or phone substring; otherwise show top 3 recent
+  const matches = (() => {
+    const q = (typedName || typedPhone).toLowerCase();
+    if (!q) return suggestions.slice(0, 3);
+    return suggestions.filter(c =>
+      c.name.toLowerCase().includes(q) || c.phone.toLowerCase().includes(q)
+    ).slice(0, 5);
+  })();
+
+  // Attached customer view — compact card with udhaar warning + change link
+  if (attached) {
+    return (
+      <div className="flex items-start gap-2">
+        <div className="w-7 h-7 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+          <UserIcon size={14} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="text-[13px] font-semibold text-gray-900 dark:text-white truncate">{attached.name}</p>
+            <button onClick={onDetach} className="text-[10px] text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 underline-offset-2 hover:underline">Change</button>
+          </div>
+          {attached.phone && (
+            <a href={`tel:${attached.phone}`} className="inline-flex items-center gap-1 text-[11px] text-gray-500 hover:text-emerald-600">
+              <Phone size={10} /> {attached.phone}
+            </a>
+          )}
+          {attached.pendingAmount > 0 && (
+            <p className="text-[10px] mt-0.5 text-amber-600 dark:text-amber-400 font-medium tabular-nums">
+              Pending udhaar {formatCurrency(attached.pendingAmount)}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Ad-hoc typed (no id yet) — collapsed summary with Edit
+  if (hasTyped && !open) {
+    return (
+      <div className="flex items-start gap-2">
+        <div className="w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 flex items-center justify-center shrink-0">
+          <UserIcon size={14} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="text-[13px] font-medium text-gray-900 dark:text-white truncate">{typedName || 'Customer'}</p>
+            <button onClick={() => onOpenChange(true)} className="text-[10px] text-emerald-600 hover:underline">Edit</button>
+            <button onClick={onDetach} className="text-[10px] text-gray-400 hover:text-gray-700 ml-auto">Remove</button>
+          </div>
+          {typedPhone && (
+            <p className="inline-flex items-center gap-1 text-[11px] text-gray-500">
+              <Phone size={10} /> {typedPhone}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Collapsed walk-in
+  if (!open) {
+    return (
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 flex items-center justify-center shrink-0">
+            <UserIcon size={14} />
+          </div>
+          <span className="text-[13px] text-gray-700 dark:text-gray-300 truncate">Walk-in customer</span>
+        </div>
+        <button
+          onClick={() => onOpenChange(true)}
+          className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+        >
+          <Plus size={12} /> Add
+        </button>
+      </div>
+    );
+  }
+
+  // Expanded panel — name + phone + suggestions
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-semibold tracking-wider uppercase text-gray-500">Customer</p>
+        <button
+          onClick={() => { onNameChange(''); onPhoneChange(''); onOpenChange(false); }}
+          className="text-[10px] text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+        >
+          Skip
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-1.5">
+        <input
+          type="text"
+          value={name}
+          onChange={e => onNameChange(e.target.value)}
+          placeholder="Name"
+          autoFocus
+          className="h-9 text-[13px] rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2.5 text-gray-900 dark:text-white"
+        />
+        <input
+          type="tel"
+          inputMode="tel"
+          value={phone}
+          onChange={e => onPhoneChange(e.target.value.replace(/[^0-9+\- ]/g, ''))}
+          placeholder="Phone"
+          className="h-9 text-[13px] rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2.5 text-gray-900 dark:text-white tabular-nums"
+        />
+      </div>
+
+      {isUdhaar && !hasTyped && (
+        <p className="text-[10px] text-amber-600 dark:text-amber-400">
+          Required for Udhaar — name or phone so you know who owes
+        </p>
+      )}
+
+      {matches.length > 0 && (
+        <div>
+          <p className="text-[10px] text-gray-500 mb-1">{hasTyped ? 'Matches' : 'Recent'}</p>
+          <ul className="space-y-1">
+            {matches.map(c => (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  onClick={() => onAttach({ id: c.id, name: c.name, phone: c.phone })}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-emerald-50 dark:hover:bg-emerald-500/10 text-left"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[12px] font-medium text-gray-900 dark:text-white truncate">{c.name}</p>
+                    {c.phone && <p className="text-[10px] text-gray-500 tabular-nums">{c.phone}</p>}
+                  </div>
+                  {c.pendingAmount > 0 && (
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium tabular-nums">
+                      Udhaar {formatCurrency(c.pendingAmount)}
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="flex items-center justify-end gap-2 pt-1">
+        <button
+          onClick={() => onOpenChange(false)}
+          className="text-[11px] px-3 py-1.5 rounded-md text-gray-500 hover:text-gray-900 dark:hover:text-white"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => {
+            if (!hasTyped) { onOpenChange(false); return; }
+            onAttach({ name: typedName, phone: typedPhone });
+          }}
+          className="text-[11px] font-semibold px-3 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+          disabled={!hasTyped}
+        >
+          Done
+        </button>
+      </div>
+    </div>
   );
 }

@@ -1,10 +1,11 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { Eye, Phone, Printer, IndianRupee, Receipt, Clock, Banknote, Smartphone, CreditCard as CardIcon } from 'lucide-react';
 import { SearchInput } from '../../components/ui/SearchInput';
 import { Table } from '../../components/ui/Table';
 import { Badge } from '../../components/ui/Badge';
-import { Dropdown } from '../../components/ui/Dropdown';
-import { Card, StatCard } from '../../components/ui/Card';
+import { SearchableSelect } from '../../components/ui/SearchableSelect';
+import { Card } from '../../components/ui/Card';
+import { CompactStat } from '../../components/ui/CompactStat';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -15,9 +16,10 @@ import { bills as initialBills, customers } from '../../data/shop-dummy';
 import { formatCurrency, formatDate, formatInvoiceNo, gstBreakdown, formatRelativeTime } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { usePermissions } from '../../context/PermissionContext';
-import { usePagination } from '../../hooks/usePagination';
+import { getSecuritySettings } from '../../utils/security';
+import { Input } from '../../components/ui/Input';
 import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
-import type { Bill } from '../../types';
+import type { Bill, SortState } from '../../types';
 import type { ExportColumn } from '../../utils/exporters';
 
 type DateRange = '' | 'today' | '7d' | '30d';
@@ -76,6 +78,10 @@ export function ShopBillsHistory() {
   const [status, setStatus] = useState<StatusFilter>('');
   const [selected, setSelected] = useState<Bill | null>(null);
   const [loading, setLoading] = useState(true);
+  const [securityOpen, setSecurityOpen] = useState(false);
+  const [securityTarget, setSecurityTarget] = useState<Bill | null>(null);
+  const [securityInput, setSecurityInput] = useState('');
+  const [securityError, setSecurityError] = useState('');
   const { addToast } = useToast();
   const { can } = usePermissions();
   const { track } = useRecentlyViewed();
@@ -106,14 +112,41 @@ export function ShopBillsHistory() {
     });
   }, [bills, search, status, range]);
 
-  const pagination = usePagination({
-    data: filtered,
-    pageSize: 8,
-    sortFns: {
-      date: (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-      total: (a, b) => a.total - b.total,
-    },
-  });
+  const [sortState, setSortState] = useState<SortState | null>(null);
+  const sortFns: Record<string, (a: Bill, b: Bill) => number> = {
+    date: (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+    total: (a, b) => a.total - b.total,
+  };
+  const sorted = useMemo(() => {
+    if (!sortState || !sortFns[sortState.key]) return filtered;
+    const arr = [...filtered].sort(sortFns[sortState.key]);
+    return sortState.direction === 'desc' ? arr.reverse() : arr;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, sortState]);
+  const toggleSort = (key: string) => {
+    setSortState(prev => {
+      if (!prev || prev.key !== key) return { key, direction: 'asc' };
+      if (prev.direction === 'asc') return { key, direction: 'desc' };
+      return null;
+    });
+  };
+
+  const PAGE = 25;
+  const [displayCount, setDisplayCount] = useState(PAGE);
+  useEffect(() => { setDisplayCount(PAGE); }, [search, status, range, sortState, bills.length]);
+  const visible = sorted.slice(0, displayCount);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setDisplayCount(c => Math.min(c + PAGE, sorted.length));
+      }
+    }, { rootMargin: '300px' });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [sorted.length, displayCount]);
 
   const summaryStats = useMemo(() => {
     const total = filtered.reduce((s, b) => s + b.total, 0);
@@ -122,10 +155,34 @@ export function ShopBillsHistory() {
     return { total, paid, pending, count: filtered.length };
   }, [filtered]);
 
-  const markAsPaid = (bill: Bill) => {
+  const doMarkAsPaid = (bill: Bill) => {
     setBills(prev => prev.map(b => b.id === bill.id ? { ...b, paid: true } : b));
     setSelected(prev => prev && prev.id === bill.id ? { ...prev, paid: true } : prev);
     addToast('success', 'Bill marked as paid');
+  };
+
+  const markAsPaid = (bill: Bill) => {
+    const security = getSecuritySettings();
+    if (security.enabled && security.code) {
+      setSecurityTarget(bill);
+      setSecurityInput('');
+      setSecurityError('');
+      setSecurityOpen(true);
+      return;
+    }
+    doMarkAsPaid(bill);
+  };
+
+  const confirmMarkAsPaid = () => {
+    const security = getSecuritySettings();
+    if (securityInput !== security.code) {
+      setSecurityError('Invalid security code');
+      return;
+    }
+    if (!securityTarget) return;
+    doMarkAsPaid(securityTarget);
+    setSecurityOpen(false);
+    setSecurityTarget(null);
   };
 
   const renderStatus = (b: Bill) => {
@@ -140,55 +197,86 @@ export function ShopBillsHistory() {
   }, [selected]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Bills History</h1>
-          <p className="mt-1 text-sm text-gray-500">View and manage all past transactions.</p>
-        </div>
+    <div className="space-y-3">
+      {/* Title row */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-xl font-bold text-gray-900 dark:text-white">Bills History</h1>
         <ExportMenu<Bill>
           baseName="bills"
           title="Bills history export"
           meta={`${filtered.length} of ${bills.length} bills`}
           columns={BILL_EXPORT_COLUMNS}
           rows={filtered}
-          size="md"
+          size="sm"
         />
       </div>
 
-      {/* Summary stats */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard title="Total Bills" value={String(summaryStats.count)} icon={<Receipt size={18} />} />
-        <StatCard title="Total Revenue" value={formatCurrency(summaryStats.total)} icon={<IndianRupee size={18} />} />
-        <StatCard title="Collected" value={formatCurrency(summaryStats.paid)} icon={<Banknote size={18} />} trend="Paid bills" trendUp />
-        <StatCard title="Pending" value={formatCurrency(summaryStats.pending)} icon={<Clock size={18} />} trend="Udhaar dues" trendUp={false} />
+      {/* Compact stat tiles */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <CompactStat
+          icon={<Receipt size={16} />}
+          tone="emerald"
+          title="Total bills"
+          value={String(summaryStats.count)}
+        />
+        <CompactStat
+          icon={<IndianRupee size={16} />}
+          tone="blue"
+          title="Total revenue"
+          value={formatCurrency(summaryStats.total)}
+        />
+        <CompactStat
+          icon={<Banknote size={16} />}
+          tone="emerald"
+          title="Collected"
+          value={formatCurrency(summaryStats.paid)}
+          subtitle="Paid bills"
+          subtitleTone="good"
+        />
+        <CompactStat
+          icon={<Clock size={16} />}
+          tone={summaryStats.pending > 0 ? 'amber' : 'gray'}
+          title="Pending"
+          value={formatCurrency(summaryStats.pending)}
+          subtitle={summaryStats.pending > 0 ? 'Udhaar dues' : 'All collected'}
+          subtitleTone={summaryStats.pending > 0 ? 'warn' : 'good'}
+          onClick={summaryStats.pending > 0 ? () => setStatus('udhaar') : undefined}
+        />
       </div>
 
-      {/* Filters */}
-      <Card>
-        <div className="grid gap-3 sm:grid-cols-[1fr_160px_180px]">
+      {/* Single-row filter bar */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex-1 min-w-0">
           <SearchInput placeholder="Search by bill ID or customer..." value={search} onSearch={setSearch} />
-          <Dropdown
+        </div>
+        <div className="sm:w-40">
+          <SearchableSelect
+            value={range}
+            onChange={(v) => setRange(v as DateRange)}
             options={[
               { label: 'All time', value: '' },
               { label: 'Today', value: 'today' },
               { label: 'Last 7 days', value: '7d' },
               { label: 'Last 30 days', value: '30d' },
             ]}
-            value={range}
-            onChange={e => setRange(e.target.value as DateRange)}
+            placeholder="All time"
+            clearable={!!range}
           />
-          <Dropdown
+        </div>
+        <div className="sm:w-44">
+          <SearchableSelect
+            value={status}
+            onChange={(v) => setStatus(v as StatusFilter)}
             options={[
               { label: 'All statuses', value: '' },
               { label: 'Paid', value: 'paid' },
               { label: 'Pending Udhaar', value: 'udhaar' },
             ]}
-            value={status}
-            onChange={e => setStatus(e.target.value as StatusFilter)}
+            placeholder="All statuses"
+            clearable={!!status}
           />
         </div>
-      </Card>
+      </div>
 
       {/* Desktop table */}
       <div className="hidden sm:block">
@@ -239,7 +327,7 @@ export function ShopBillsHistory() {
               ),
             },
           ]}
-          data={pagination.pageData}
+          data={visible}
           keyExtractor={b => b.id}
           emptyState={
             bills.length === 0 ? (
@@ -260,20 +348,14 @@ export function ShopBillsHistory() {
             )
           }
           onRowClick={openBill}
-          page={pagination.page}
-          totalPages={pagination.totalPages}
-          total={pagination.total}
-          onPageChange={pagination.setPage}
-          sortState={pagination.sortState}
-          onSort={pagination.toggleSort}
-          startIndex={pagination.startIndex}
-          endIndex={pagination.endIndex}
+          sortState={sortState}
+          onSort={toggleSort}
         /></div>}
       </div>
 
       {/* Mobile cards */}
       <div className="space-y-3 sm:hidden">
-        {loading ? <CardListSkeleton rows={4} /> : <div className="animate-fade-in-up space-y-3">{pagination.pageData.map(b => (
+        {loading ? <CardListSkeleton rows={4} /> : <div className="animate-fade-in-up space-y-3">{visible.map(b => (
           <button
             key={b.id}
             type="button"
@@ -313,6 +395,16 @@ export function ShopBillsHistory() {
           </Card>
         )}
       </div>
+
+      {/* Infinite-scroll sentinel + footer */}
+      <div ref={sentinelRef} className="h-8" />
+      {sorted.length > 0 && !loading && (
+        <p className="text-center text-[11px] text-gray-400 -mt-2 mb-2 tabular-nums">
+          {visible.length < sorted.length
+            ? `Showing ${visible.length} of ${sorted.length} — scroll for more`
+            : `${sorted.length} bill${sorted.length === 1 ? '' : 's'}`}
+        </p>
+      )}
 
       {/* Bill Details Modal */}
       <Modal open={!!selected} onClose={() => setSelected(null)} title="Bill details" size="lg">
@@ -431,6 +523,38 @@ export function ShopBillsHistory() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Security prompt — required when shopkeeper has set a settle PIN in Settings */}
+      <Modal open={securityOpen} onClose={() => { setSecurityOpen(false); setSecurityTarget(null); setSecurityInput(''); setSecurityError(''); }} title="Confirm payment" size="sm">
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Enter your security code to mark this bill as paid.
+          </p>
+          {securityTarget && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3 bg-gray-50 dark:bg-gray-800/40">
+              <p className="text-[11px] text-gray-500 uppercase tracking-wider">Bill</p>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">{formatInvoiceNo(securityTarget.id, securityTarget.date)} · {securityTarget.customerName}</p>
+              <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums mt-1">
+                {formatCurrency(securityTarget.total)}
+              </p>
+            </div>
+          )}
+          <Input
+            label="Security code"
+            type="password"
+            inputMode="numeric"
+            value={securityInput}
+            onChange={e => { setSecurityInput(e.target.value); setSecurityError(''); }}
+            onKeyDown={e => { if (e.key === 'Enter') confirmMarkAsPaid(); }}
+            error={securityError || undefined}
+            autoFocus
+          />
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" onClick={() => { setSecurityOpen(false); setSecurityTarget(null); setSecurityInput(''); setSecurityError(''); }}>Cancel</Button>
+            <Button variant="primary" onClick={confirmMarkAsPaid}>Confirm</Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

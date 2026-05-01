@@ -31,6 +31,7 @@ import {
 import { formatCurrency, formatDate, formatRelativeTime } from '../../utils/formatters';
 import { customerAging, AGING_TONES, customerHealth, HEALTH_TONES } from '../../utils/customerAging';
 import { useToast } from '../../context/ToastContext';
+import { getSecuritySettings } from '../../utils/security';
 import type { LedgerEntry, PaymentMethod } from '../../types';
 import type { ExportColumn } from '../../utils/exporters';
 
@@ -53,6 +54,9 @@ export function ShopCustomerLedger() {
   const [kindFilter, setKindFilter] = useState('');
   const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash' as PaymentMethod, note: '' });
   const [adjustForm, setAdjustForm] = useState({ amount: '', kind: 'credit' as 'credit' | 'debit', note: '' });
+  const [securityOpen, setSecurityOpen] = useState(false);
+  const [securityInput, setSecurityInput] = useState('');
+  const [securityError, setSecurityError] = useState('');
 
   const customer = initialCustomers.find(c => c.id === id);
 
@@ -116,12 +120,8 @@ export function ShopCustomerLedger() {
     );
   }
 
-  const handleAddPayment = () => {
+  const persistPayment = () => {
     const amt = Number(paymentForm.amount);
-    if (!amt || amt <= 0) {
-      addToast('error', 'Enter a valid amount');
-      return;
-    }
     const entry: LedgerEntry = {
       id: 'L' + Date.now().toString(36),
       customerId: customer.id,
@@ -135,6 +135,32 @@ export function ShopCustomerLedger() {
     addToast('success', 'Payment recorded', `${formatCurrency(amt)} from ${customer.name}`);
     setPaymentForm({ amount: '', method: 'cash', note: '' });
     setPaymentOpen(false);
+  };
+
+  const handleAddPayment = () => {
+    const amt = Number(paymentForm.amount);
+    if (!amt || amt <= 0) {
+      addToast('error', 'Enter a valid amount');
+      return;
+    }
+    const security = getSecuritySettings();
+    if (security.enabled && security.code) {
+      setSecurityInput('');
+      setSecurityError('');
+      setSecurityOpen(true);
+      return;
+    }
+    persistPayment();
+  };
+
+  const confirmSecurityAndPay = () => {
+    const security = getSecuritySettings();
+    if (securityInput !== security.code) {
+      setSecurityError('Invalid security code');
+      return;
+    }
+    setSecurityOpen(false);
+    persistPayment();
   };
 
   const handleAddAdjustment = () => {
@@ -364,6 +390,36 @@ export function ShopCustomerLedger() {
           </ul>
         </Card>
       )}
+
+      {/* Security prompt — required when shopkeeper has set a settle PIN in Settings */}
+      <Modal open={securityOpen} onClose={() => { setSecurityOpen(false); setSecurityInput(''); setSecurityError(''); }} title="Confirm payment" size="sm">
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Enter your security code to record this payment.
+          </p>
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3 bg-gray-50 dark:bg-gray-800/40">
+            <p className="text-[11px] text-gray-500 uppercase tracking-wider">Customer</p>
+            <p className="text-sm font-medium text-gray-900 dark:text-white">{customer.name}</p>
+            <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums mt-1">
+              {formatCurrency(Number(paymentForm.amount) || 0)} via {paymentForm.method.toUpperCase()}
+            </p>
+          </div>
+          <Input
+            label="Security code"
+            type="password"
+            inputMode="numeric"
+            value={securityInput}
+            onChange={e => { setSecurityInput(e.target.value); setSecurityError(''); }}
+            onKeyDown={e => { if (e.key === 'Enter') confirmSecurityAndPay(); }}
+            error={securityError || undefined}
+            autoFocus
+          />
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" onClick={() => { setSecurityOpen(false); setSecurityInput(''); setSecurityError(''); }}>Cancel</Button>
+            <Button variant="primary" onClick={confirmSecurityAndPay}>Confirm</Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Payment Modal */}
       <Modal open={paymentOpen} onClose={() => setPaymentOpen(false)} title="Record payment" size="sm">
