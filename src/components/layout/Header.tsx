@@ -1,7 +1,7 @@
 import {
   Menu, Bell, Sun, Moon, LogOut, ChevronDown,
   AlertTriangle, Clock, CheckCircle2, Receipt, UserPlus, Package, CreditCard, X as XIcon,
-  Wifi, WifiOff, BellOff, Trash2,
+  BellOff, Trash2, ShoppingCart,
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useTheme } from '../../context/ThemeContext';
@@ -55,26 +55,10 @@ export function Header({ onMenuClick }: HeaderProps) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>(SAMPLE_NOTIFICATIONS);
   const [notifFilter, setNotifFilter] = useState<'all' | 'unread' | 'alerts'>('all');
-  const [statusOpen, setStatusOpen] = useState(false);
-  const [online, setOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
-  const [lastSync, setLastSync] = useState<Date>(() => new Date(Date.now() - 2 * 60 * 1000));
-  const [resyncing, setResyncing] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
-  const statusRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const onOnline = () => { setOnline(true); setLastSync(new Date()); };
-    const onOffline = () => setOnline(false);
-    window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
-    return () => {
-      window.removeEventListener('online', onOnline);
-      window.removeEventListener('offline', onOffline);
-    };
-  }, []);
-
-  // Tick relative-time chip every 30s so "synced X ago" stays fresh
+  // Tick every 30s so notification "X ago" timestamps stay fresh
   const [, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick(t => t + 1), 30 * 1000);
@@ -85,19 +69,10 @@ export function Header({ onMenuClick }: HeaderProps) {
     const handler = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
-      if (statusRef.current && !statusRef.current.contains(e.target as Node)) setStatusOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
-
-  const triggerResync = () => {
-    setResyncing(true);
-    setTimeout(() => {
-      setResyncing(false);
-      setLastSync(new Date());
-    }, 900);
-  };
 
   const unreadCount = notifications.filter(n => n.unread).length;
 
@@ -143,99 +118,14 @@ export function Header({ onMenuClick }: HeaderProps) {
 
         <div className="flex-1" />
 
-        {/* System status chip */}
-        <div className="relative" ref={statusRef}>
-          <button
-            onClick={() => setStatusOpen(o => !o)}
-            className={`group hidden sm:inline-flex items-center gap-1.5 rounded-full pl-1.5 pr-2.5 py-1 text-[11px] font-medium border transition-colors ${
-              online
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-400 dark:hover:bg-emerald-500/15'
-                : 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-500/10 dark:border-red-500/20 dark:text-red-400 dark:hover:bg-red-500/15'
-            }`}
-            title={online ? 'All systems operational' : 'You appear to be offline'}
-            aria-label="System status"
-          >
-            <span className="relative flex w-2 h-2">
-              {online && (
-                <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
-              )}
-              <span className={`relative inline-block w-2 h-2 rounded-full ${online ? 'bg-emerald-500' : 'bg-red-500'}`} />
-            </span>
-            <span>
-              {online
-                ? <>All systems · synced {formatRelativeTime(lastSync)}</>
-                : 'Offline · changes pending'}
-            </span>
-          </button>
-
-          {/* Compact mobile dot trigger */}
-          <button
-            onClick={() => setStatusOpen(o => !o)}
-            className={`sm:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg ${
-              online ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
-            } hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors`}
-            aria-label="System status"
-          >
-            <span className="relative flex w-2 h-2">
-              {online && <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />}
-              <span className={`relative inline-block w-2 h-2 rounded-full ${online ? 'bg-emerald-500' : 'bg-red-500'}`} />
-            </span>
-          </button>
-
-          {statusOpen && (
-            <div className="absolute right-0 top-full mt-2 w-72 rounded-xl border border-gray-200 bg-white dark:bg-gray-900 dark:border-gray-800 shadow-xl overflow-hidden z-30">
-              <div className={`px-4 py-3 flex items-start gap-3 ${
-                online
-                  ? 'bg-emerald-50/60 dark:bg-emerald-500/10'
-                  : 'bg-red-50/60 dark:bg-red-500/10'
-              }`}>
-                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                  online
-                    ? 'bg-white dark:bg-gray-900 text-emerald-600 dark:text-emerald-400'
-                    : 'bg-white dark:bg-gray-900 text-red-600 dark:text-red-400'
-                }`}>
-                  {online ? <Wifi size={16} /> : <WifiOff size={16} />}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                    {online ? 'All systems operational' : 'You appear to be offline'}
-                  </p>
-                  <p className="text-[11px] text-gray-500 mt-0.5">
-                    Last synced {formatRelativeTime(lastSync)} · {lastSync.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                </div>
-              </div>
-              <ul className="px-4 py-3 space-y-2 text-[12px]">
-                <li className="flex items-center justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">API services</span>
-                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">Operational</span>
-                </li>
-                <li className="flex items-center justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Billing engine</span>
-                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">Operational</span>
-                </li>
-                <li className="flex items-center justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Cloud backup</span>
-                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">Operational</span>
-                </li>
-                <li className="flex items-center justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">WhatsApp delivery</span>
-                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">Operational</span>
-                </li>
-              </ul>
-              <div className="border-t border-gray-200 dark:border-gray-800 px-4 py-2 flex items-center justify-between">
-                <span className="text-[11px] text-gray-400">v 1.0.0</span>
-                <button
-                  onClick={triggerResync}
-                  disabled={resyncing}
-                  className="text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:underline disabled:opacity-60"
-                >
-                  {resyncing ? 'Syncing…' : 'Sync now'}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        <button
+          onClick={() => navigate('/shop/billing')}
+          className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/15 dark:text-emerald-400 text-sm font-semibold transition-colors"
+          title="New bill"
+        >
+          <ShoppingCart size={15} strokeWidth={2.4} />
+          <span>New Bill</span>
+        </button>
 
         <button
           onClick={toggleTheme}

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import {
   Plus, Phone, Eye, CircleDollarSign, Users, AlertCircle,
   ShieldCheck, Share2, Pencil, BookOpen,
@@ -10,8 +10,8 @@ import { Table } from '../../components/ui/Table';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
-import { Dropdown } from '../../components/ui/Dropdown';
-import { Card, StatCard } from '../../components/ui/Card';
+import { Card } from '../../components/ui/Card';
+import { CompactStat } from '../../components/ui/CompactStat';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ExportMenu } from '../../components/ui/ExportMenu';
 import { CardListSkeleton, TableSkeleton } from '../../components/ui/Skeleton';
@@ -21,20 +21,14 @@ import { customers as initialCustomers, bills as initialBills } from '../../data
 import { formatCurrency, formatDate, formatRelativeTime, generateId } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { usePermissions } from '../../context/PermissionContext';
-import { usePagination } from '../../hooks/usePagination';
 import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
 import { customerAging, AGING_TONES, customerHealth, HEALTH_TONES } from '../../utils/customerAging';
 import type { AgingBucket } from '../../utils/customerAging';
-import type { Bill, Customer } from '../../types';
+import { getSecuritySettings } from '../../utils/security';
+import type { Bill, Customer, SortState } from '../../types';
 import type { ExportColumn } from '../../utils/exporters';
 
 type DuesFilter = '' | 'with' | 'cleared' | AgingBucket;
-
-function getSecuritySettings() {
-  const enabled = localStorage.getItem('shopmanager.security.enabled') === 'true';
-  const code = localStorage.getItem('shopmanager.security.code') || '';
-  return { enabled: enabled && code.length > 0, code };
-}
 
 interface CustomerFormState {
   name: string;
@@ -126,14 +120,41 @@ export function ShopCustomers() {
     });
   }, [customersList, search, duesFilter, agingMap]);
 
-  const pagination = usePagination({
-    data: filtered,
-    pageSize: 8,
-    sortFns: {
-      name: (a, b) => a.name.localeCompare(b.name),
-      pending: (a, b) => a.pendingAmount - b.pendingAmount,
-    },
-  });
+  const [sortState, setSortState] = useState<SortState | null>(null);
+  const sortFns: Record<string, (a: Customer, b: Customer) => number> = {
+    name: (a, b) => a.name.localeCompare(b.name),
+    pending: (a, b) => a.pendingAmount - b.pendingAmount,
+  };
+  const sorted = useMemo(() => {
+    if (!sortState || !sortFns[sortState.key]) return filtered;
+    const arr = [...filtered].sort(sortFns[sortState.key]);
+    return sortState.direction === 'desc' ? arr.reverse() : arr;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, sortState]);
+  const toggleSort = (key: string) => {
+    setSortState(prev => {
+      if (!prev || prev.key !== key) return { key, direction: 'asc' };
+      if (prev.direction === 'asc') return { key, direction: 'desc' };
+      return null;
+    });
+  };
+
+  const PAGE = 25;
+  const [displayCount, setDisplayCount] = useState(PAGE);
+  useEffect(() => { setDisplayCount(PAGE); }, [search, duesFilter, sortState, customersList.length]);
+  const visible = sorted.slice(0, displayCount);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setDisplayCount(c => Math.min(c + PAGE, sorted.length));
+      }
+    }, { rootMargin: '300px' });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [sorted.length, displayCount]);
 
   const totalPending = customersList.reduce((s, c) => s + c.pendingAmount, 0);
   const dueCount = customersList.filter(c => c.pendingAmount > 0).length;
@@ -284,11 +305,11 @@ export function ShopCustomers() {
       return next;
     });
   };
-  const allCustSelected = pagination.pageData.length > 0 && pagination.pageData.every(c => selectedIds.has(c.id));
-  const someCustSelected = pagination.pageData.some(c => selectedIds.has(c.id));
+  const allCustSelected = visible.length > 0 && visible.every(c => selectedIds.has(c.id));
+  const someCustSelected = visible.some(c => selectedIds.has(c.id));
   const toggleSelectAllCust = () => {
     if (allCustSelected) setSelectedIds(new Set());
-    else setSelectedIds(new Set(pagination.pageData.map(c => c.id)));
+    else setSelectedIds(new Set(visible.map(c => c.id)));
   };
   const bulkSendReminder = () => {
     const selected = customersList.filter(c => selectedIds.has(c.id) && c.pendingAmount > 0);
@@ -299,50 +320,56 @@ export function ShopCustomers() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Customers</h1>
-          <p className="mt-1 text-sm text-gray-500">Manage customers, track udhaar, and watch overdue debts.</p>
-        </div>
-        <div className="flex items-center gap-2">
+    <div className="space-y-3">
+      {/* Title row */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-xl font-bold text-gray-900 dark:text-white">Customers</h1>
+        <div className="flex items-center gap-2 flex-wrap">
           <ExportMenu<Customer>
             baseName="customers"
             title="Customers export"
             meta={`${filtered.length} of ${customersList.length} customers`}
             columns={exportColumns}
             rows={filtered}
-            size="md"
+            size="sm"
           />
-          {canAdd && <Button variant="primary" icon={<Plus size={16} />} onClick={openAdd}>Add customer</Button>}
+          {canAdd && <Button variant="primary" size="sm" icon={<Plus size={14} />} onClick={openAdd}>Add customer</Button>}
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard title="Total Customers" value={customersList.length.toString()} icon={<Users size={18} />} />
-        <StatCard
-          title="Pending Udhaar"
-          value={formatCurrency(totalPending)}
-          icon={<CircleDollarSign size={18} />}
-          trend={`${dueCount} customer${dueCount === 1 ? '' : 's'}`}
-          trendUp={false}
-          onClick={() => setDuesFilter('with')}
+      {/* Compact stat tiles */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <CompactStat
+          icon={<Users size={16} />}
+          tone="emerald"
+          title="Total customers"
+          value={String(customersList.length)}
         />
-        <StatCard
+        <CompactStat
+          icon={<CircleDollarSign size={16} />}
+          tone={dueCount > 0 ? 'amber' : 'gray'}
+          title="Pending udhaar"
+          value={formatCurrency(totalPending)}
+          subtitle={dueCount > 0 ? `${dueCount} customer${dueCount === 1 ? '' : 's'}` : 'All cleared'}
+          subtitleTone={dueCount > 0 ? 'warn' : 'good'}
+          onClick={dueCount > 0 ? () => setDuesFilter('with') : undefined}
+        />
+        <CompactStat
+          icon={<AlertCircle size={16} />}
+          tone="blue"
           title="Cleared"
-          value={clearedCount.toString()}
-          icon={<AlertCircle size={18} />}
-          trend={`${Math.round((clearedCount / customersList.length) * 100)}% cleared`}
-          trendUp
+          value={String(clearedCount)}
+          subtitle={`${Math.round((clearedCount / Math.max(1, customersList.length)) * 100)}% of base`}
+          subtitleTone="good"
         />
       </div>
 
-      {/* Aging buckets */}
+      {/* Aging buckets — only when there's pending dues */}
       {totalPending > 0 && (
-        <Card>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Udhaar aging</h3>
-            <p className="text-xs text-gray-500">Click a bucket to filter</p>
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Udhaar aging</h3>
+            <p className="text-[10px] text-gray-400">Click a bucket to filter</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {(['0-30', '31-60', '61-90', '90+'] as AgingBucket[]).map(bucket => {
@@ -353,40 +380,34 @@ export function ShopCustomers() {
                 <button
                   key={bucket}
                   onClick={() => setDuesFilter(active ? '' : bucket)}
-                  className={`p-3 rounded-lg border text-left transition-all ${
-                    active ? 'ring-2 ring-emerald-500 ring-offset-1 dark:ring-offset-gray-900' : ''
+                  className={`px-3 py-2 rounded-lg border text-left transition-all ${
+                    active ? 'ring-2 ring-emerald-500 ring-offset-1 dark:ring-offset-gray-950' : ''
                   } ${t.bg} ${t.border}`}
                 >
-                  <p className={`text-xs font-medium ${t.text}`}>{t.label}</p>
-                  <p className="text-lg font-bold mt-1 tabular-nums">{formatCurrency(data.amount)}</p>
-                  <p className="text-[11px] text-gray-500 mt-0.5">{data.count} customer{data.count === 1 ? '' : 's'}</p>
+                  <p className={`text-[10px] font-medium ${t.text}`}>{t.label}</p>
+                  <p className="text-base font-bold mt-0.5 tabular-nums leading-tight">{formatCurrency(data.amount)}</p>
+                  <p className="text-[10px] text-gray-500 leading-tight">{data.count} customer{data.count === 1 ? '' : 's'}</p>
                 </button>
               );
             })}
           </div>
-        </Card>
+        </div>
       )}
 
-      <Card>
-        <div className="space-y-3">
-          <div className="grid gap-3 sm:grid-cols-[1fr_200px]">
-            <SearchInput placeholder="Search by name, phone, area..." value={search} onSearch={setSearch} />
-            <Dropdown
-              options={[
-                { label: 'All customers', value: '' },
-                { label: `With dues (${dueCount})`, value: 'with' },
-                { label: `Cleared (${clearedCount})`, value: 'cleared' },
-                { label: `Aged 0-30d`, value: '0-30' },
-                { label: `Aged 31-60d`, value: '31-60' },
-                { label: `Aged 61-90d`, value: '61-90' },
-                { label: `Aged 90+d`, value: '90+' },
-              ]}
-              value={duesFilter}
-              onChange={e => setDuesFilter(e.target.value as DuesFilter)}
-            />
-          </div>
+      {/* Search bar — filters happen via stat tiles and aging buckets above */}
+      <div className="flex items-center gap-2">
+        <div className="flex-1 min-w-0">
+          <SearchInput placeholder="Search by name, phone, area..." value={search} onSearch={setSearch} />
         </div>
-      </Card>
+        {duesFilter && (
+          <button
+            onClick={() => setDuesFilter('')}
+            className="inline-flex items-center gap-1 h-9 px-3 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+          >
+            Clear filter
+          </button>
+        )}
+      </div>
 
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 animate-fade-in-up">
@@ -506,7 +527,7 @@ export function ShopCustomers() {
               ),
             },
           ]}
-          data={pagination.pageData}
+          data={visible}
           keyExtractor={c => c.id}
           emptyState={
             customersList.length === 0 ? (
@@ -527,20 +548,14 @@ export function ShopCustomers() {
             )
           }
           onRowClick={openDetail}
-          page={pagination.page}
-          totalPages={pagination.totalPages}
-          total={pagination.total}
-          onPageChange={pagination.setPage}
-          sortState={pagination.sortState}
-          onSort={pagination.toggleSort}
-          startIndex={pagination.startIndex}
-          endIndex={pagination.endIndex}
+          sortState={sortState}
+          onSort={toggleSort}
         /></div>}
       </div>
 
       {/* Mobile cards */}
       <div className="space-y-3 sm:hidden">
-        {loading ? <CardListSkeleton rows={4} showAvatar /> : <div className="animate-fade-in-up space-y-3">{pagination.pageData.map(c => {
+        {loading ? <CardListSkeleton rows={4} showAvatar /> : <div className="animate-fade-in-up space-y-3">{visible.map(c => {
           const aging = agingMap.get(c.id);
           return (
             <div key={c.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 hover-lift transition-transform">
@@ -579,6 +594,16 @@ export function ShopCustomers() {
           );
         })}</div>}
       </div>
+
+      {/* Infinite-scroll sentinel + footer */}
+      <div ref={sentinelRef} className="h-8" />
+      {sorted.length > 0 && !loading && (
+        <p className="text-center text-[11px] text-gray-400 -mt-2 mb-2 tabular-nums">
+          {visible.length < sorted.length
+            ? `Showing ${visible.length} of ${sorted.length} — scroll for more`
+            : `${sorted.length} customer${sorted.length === 1 ? '' : 's'}`}
+        </p>
+      )}
 
       {/* Add Customer Modal */}
       <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add customer" size="lg">
@@ -632,7 +657,7 @@ export function ShopCustomers() {
                 <Button variant="ghost" size="sm" icon={<Share2 size={13} />} onClick={() => sendWhatsAppReminder(selected)}>WhatsApp Reminder</Button>
               )}
               {canEdit && selected.pendingAmount > 0 && (
-                <Button variant="primary" size="sm" onClick={() => { requestSettle(selected); setSelected(null); }}>Clear payment</Button>
+                <Button variant="primary" size="sm" onClick={() => requestSettle(selected)}>Clear payment</Button>
               )}
             </div>
 
