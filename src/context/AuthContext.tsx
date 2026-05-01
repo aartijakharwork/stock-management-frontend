@@ -84,9 +84,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const getStaffPermissions = useCallback((): RolePermissions | null => {
-    if (!user || user.role !== 'staff' || !user.staffRoleId) return null;
-    const role = dummyRoles.find(r => r.id === user.staffRoleId);
-    return role?.permissions ?? null;
+    if (!user || user.role !== 'staff') return null;
+    if (user.staffRoleId) {
+      const role = dummyRoles.find(r => r.id === user.staffRoleId);
+      return role?.permissions ?? null;
+    }
+    // Saved sessions without staffRoleId still need a role matrix (e.g. Cashier).
+    return dummyRoles.find(r => r.id === '2')?.permissions ?? null;
   }, [user]);
 
   return (

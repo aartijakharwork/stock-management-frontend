@@ -8,6 +8,10 @@ import type {
   StaffInvite,
   Expense,
   Purchase,
+  Supplier,
+  LedgerEntry,
+  ActivityEntry,
+  HeldBill,
 } from '../types';
 
 const fullAccess = { view: true, add: true, edit: true, delete: true };
@@ -28,6 +32,8 @@ export const roles: Role[] = [
       roles: viewOnly,
       settings: viewOnly,
       subscription: viewOnly,
+      expenses: fullAccess,
+      suppliers: fullAccess,
     },
   },
   {
@@ -43,6 +49,8 @@ export const roles: Role[] = [
       roles: noAccess,
       settings: noAccess,
       subscription: noAccess,
+      expenses: viewOnly,
+      suppliers: noAccess,
     },
   },
   {
@@ -58,46 +66,55 @@ export const roles: Role[] = [
       roles: noAccess,
       settings: noAccess,
       subscription: noAccess,
+      expenses: noAccess,
+      suppliers: { view: true, add: true, edit: true, delete: false },
     },
   },
 ];
 
+export const suppliers: Supplier[] = [
+  { id: 'S1', name: 'Mehta Auto Distributors', contactPerson: 'Vinod Mehta', phone: '9810012345', email: 'orders@mehtaauto.in', gstin: '07AABCM1234L1Z3', address: '12, Kashmere Gate Auto Market, Delhi', payableBalance: 0, lastOrderDate: '2026-04-23' },
+  { id: 'S2', name: 'Singh Spare Parts', contactPerson: 'Harpreet Singh', phone: '9811023456', email: 'singh.parts@gmail.com', gstin: '07AAACS2345M1Z2', address: '78, Karol Bagh, Delhi', payableBalance: 0, lastOrderDate: '2026-04-20' },
+  { id: 'S3', name: 'Delhi Auto Wholesale', contactPerson: 'Ravi Khurana', phone: '9812034567', email: 'sales@delhiauto.in', gstin: '07AABCD9876N1Z5', address: 'Block C, Mayapuri Industrial Area, Delhi', payableBalance: 28000, lastOrderDate: '2026-04-17' },
+  { id: 'S4', name: 'Bharat Motor Spares', contactPerson: 'Suresh Joshi', phone: '9813045678', gstin: '07AABCB5678P1Z9', address: '34, Ghaziabad Auto Market', payableBalance: 12500, lastOrderDate: '2026-04-10' },
+];
+
 export const inventoryItems: InventoryItem[] = [
-  { id: '1', name: 'Engine Oil 5W-30', price: 450, stock: 24, category: 'Oils', unit: 'bottle' },
-  { id: '2', name: 'Brake Pad Set', price: 850, stock: 12, category: 'Brakes', unit: 'set' },
-  { id: '3', name: 'Air Filter', price: 250, stock: 30, category: 'Filters', unit: 'piece' },
-  { id: '4', name: 'Spark Plug (Iridium)', price: 320, stock: 50, category: 'Ignition', unit: 'piece' },
-  { id: '5', name: 'Clutch Plate', price: 1200, stock: 8, category: 'Clutch', unit: 'piece' },
-  { id: '6', name: 'Timing Belt', price: 680, stock: 15, category: 'Belts', unit: 'piece' },
-  { id: '7', name: 'Headlight Bulb H4', price: 180, stock: 40, category: 'Electrical', unit: 'piece' },
-  { id: '8', name: 'Battery 12V 65Ah', price: 4500, stock: 3, category: 'Electrical', unit: 'piece' },
-  { id: '9', name: 'Coolant 1L', price: 220, stock: 18, category: 'Fluids', unit: 'bottle' },
-  { id: '10', name: 'Wiper Blade 20"', price: 350, stock: 22, category: 'Accessories', unit: 'piece' },
-  { id: '11', name: 'Oil Filter', price: 150, stock: 35, category: 'Filters', unit: 'piece' },
-  { id: '12', name: 'Radiator Hose', price: 520, stock: 2, category: 'Cooling', unit: 'piece' },
-  { id: '13', name: 'Alternator Belt', price: 380, stock: 10, category: 'Belts', unit: 'piece' },
-  { id: '14', name: 'Fuel Filter', price: 190, stock: 28, category: 'Filters', unit: 'piece' },
-  { id: '15', name: 'Wheel Bearing', price: 750, stock: 6, category: 'Suspension', unit: 'piece' },
-  { id: '16', name: 'Shock Absorber', price: 1800, stock: 4, category: 'Suspension', unit: 'piece' },
-  { id: '17', name: 'Gear Oil 90', price: 350, stock: 16, category: 'Oils', unit: 'bottle' },
-  { id: '18', name: 'Brake Fluid DOT4', price: 180, stock: 5, category: 'Fluids', unit: 'bottle' },
-  { id: '19', name: 'Carburetor Kit', price: 950, stock: 7, category: 'Engine', unit: 'set' },
-  { id: '20', name: 'Chain Sprocket Set', price: 1100, stock: 9, category: 'Engine', unit: 'set' },
+  { id: '1', name: 'Engine Oil 5W-30', price: 450, costPrice: 380, stock: 24, category: 'Oils', unit: 'bottle', sku: 'OIL-5W30-1L', barcode: '8901234567001', reorderLevel: 10, supplierId: 'S1', hsn: '27101981', taxRate: 18 },
+  { id: '2', name: 'Brake Pad Set', price: 850, costPrice: 700, stock: 12, category: 'Brakes', unit: 'set', sku: 'BRK-PAD-FR', barcode: '8901234567002', reorderLevel: 8, supplierId: 'S2', hsn: '87083000', taxRate: 28 },
+  { id: '3', name: 'Air Filter', price: 250, costPrice: 180, stock: 30, category: 'Filters', unit: 'piece', sku: 'FLT-AIR-01', barcode: '8901234567003', reorderLevel: 12, supplierId: 'S1', hsn: '84212300', taxRate: 18 },
+  { id: '4', name: 'Spark Plug (Iridium)', price: 320, costPrice: 240, stock: 50, category: 'Ignition', unit: 'piece', sku: 'IGN-SP-IR', barcode: '8901234567004', reorderLevel: 20, supplierId: 'S2', hsn: '85113000', taxRate: 28 },
+  { id: '5', name: 'Clutch Plate', price: 1200, costPrice: 1000, stock: 8, category: 'Clutch', unit: 'piece', sku: 'CLT-PL-STD', barcode: '8901234567005', reorderLevel: 5, supplierId: 'S2', hsn: '87089300', taxRate: 28 },
+  { id: '6', name: 'Timing Belt', price: 680, costPrice: 520, stock: 15, category: 'Belts', unit: 'piece', sku: 'BLT-TIM-S1', barcode: '8901234567006', reorderLevel: 8, supplierId: 'S4', hsn: '40103900', taxRate: 18 },
+  { id: '7', name: 'Headlight Bulb H4', price: 180, costPrice: 120, stock: 40, category: 'Electrical', unit: 'piece', sku: 'ELC-BLB-H4', barcode: '8901234567007', reorderLevel: 15, supplierId: 'S3', hsn: '85393100', taxRate: 18 },
+  { id: '8', name: 'Battery 12V 65Ah', price: 4500, costPrice: 3800, stock: 3, category: 'Electrical', unit: 'piece', sku: 'ELC-BAT-65', barcode: '8901234567008', reorderLevel: 4, supplierId: 'S3', hsn: '85072000', taxRate: 28 },
+  { id: '9', name: 'Coolant 1L', price: 220, costPrice: 160, stock: 18, category: 'Fluids', unit: 'bottle', sku: 'FLD-COL-1L', barcode: '8901234567009', reorderLevel: 10, supplierId: 'S1', hsn: '38200000', taxRate: 18 },
+  { id: '10', name: 'Wiper Blade 20"', price: 350, costPrice: 240, stock: 22, category: 'Accessories', unit: 'piece', sku: 'ACC-WPR-20', barcode: '8901234567010', reorderLevel: 10, supplierId: 'S4', hsn: '85123000', taxRate: 18 },
+  { id: '11', name: 'Oil Filter', price: 150, costPrice: 110, stock: 35, category: 'Filters', unit: 'piece', sku: 'FLT-OIL-01', barcode: '8901234567011', reorderLevel: 15, supplierId: 'S1', hsn: '84212300', taxRate: 18 },
+  { id: '12', name: 'Radiator Hose', price: 520, costPrice: 380, stock: 2, category: 'Cooling', unit: 'piece', sku: 'COL-HSE-RD', barcode: '8901234567012', reorderLevel: 6, supplierId: 'S4', hsn: '40093200', taxRate: 18 },
+  { id: '13', name: 'Alternator Belt', price: 380, costPrice: 280, stock: 10, category: 'Belts', unit: 'piece', sku: 'BLT-ALT-01', barcode: '8901234567013', reorderLevel: 8, supplierId: 'S4', hsn: '40103900', taxRate: 18 },
+  { id: '14', name: 'Fuel Filter', price: 190, costPrice: 140, stock: 28, category: 'Filters', unit: 'piece', sku: 'FLT-FUL-01', barcode: '8901234567014', reorderLevel: 12, supplierId: 'S1', hsn: '84212300', taxRate: 18 },
+  { id: '15', name: 'Wheel Bearing', price: 750, costPrice: 600, stock: 6, category: 'Suspension', unit: 'piece', sku: 'SUS-BRG-01', barcode: '8901234567015', reorderLevel: 6, supplierId: 'S2', hsn: '84821010', taxRate: 18 },
+  { id: '16', name: 'Shock Absorber', price: 1800, costPrice: 1500, stock: 4, category: 'Suspension', unit: 'piece', sku: 'SUS-SHK-01', barcode: '8901234567016', reorderLevel: 4, supplierId: 'S3', hsn: '87088000', taxRate: 28 },
+  { id: '17', name: 'Gear Oil 90', price: 350, costPrice: 280, stock: 16, category: 'Oils', unit: 'bottle', sku: 'OIL-GR-90', barcode: '8901234567017', reorderLevel: 8, supplierId: 'S1', hsn: '27101981', taxRate: 18 },
+  { id: '18', name: 'Brake Fluid DOT4', price: 180, costPrice: 130, stock: 5, category: 'Fluids', unit: 'bottle', sku: 'FLD-BRK-D4', barcode: '8901234567018', reorderLevel: 8, supplierId: 'S1', hsn: '38190010', taxRate: 18 },
+  { id: '19', name: 'Carburetor Kit', price: 950, costPrice: 720, stock: 7, category: 'Engine', unit: 'set', sku: 'ENG-CRB-KT', barcode: '8901234567019', reorderLevel: 5, supplierId: 'S4', hsn: '84099900', taxRate: 28 },
+  { id: '20', name: 'Chain Sprocket Set', price: 1100, costPrice: 880, stock: 9, category: 'Engine', unit: 'set', sku: 'ENG-CHN-SP', barcode: '8901234567020', reorderLevel: 6, supplierId: 'S2', hsn: '87149990', taxRate: 28 },
 ];
 
 export const customers: Customer[] = [
-  { id: '1', name: 'Rajesh Kumar', phone: '7877965097', pendingAmount: 2500, address: '12-B, Karol Bagh, Delhi' },
-  { id: '2', name: 'Sunil Sharma', phone: '9876543211', pendingAmount: 0, address: '45, Lajpat Nagar, Delhi' },
-  { id: '3', name: 'Amit Patel', phone: '9876543212', pendingAmount: 1200, address: '78, Nehru Place, Delhi' },
-  { id: '4', name: 'Vikram Singh', phone: '9876543213', pendingAmount: 4800, address: '90, Rohini, Delhi' },
-  { id: '5', name: 'Manoj Gupta', phone: '9876543214', pendingAmount: 350, address: '23, Pitampura, Delhi' },
-  { id: '6', name: 'Deepak Verma', phone: '9876543215', pendingAmount: 0, address: '56, Vasant Kunj, Delhi' },
-  { id: '7', name: 'Sanjay Yadav', phone: '9876543216', pendingAmount: 1800, address: '34, Dwarka, Delhi' },
-  { id: '8', name: 'Ravi Tiwari', phone: '9876543217', pendingAmount: 0, address: '67, Saket, Delhi' },
-  { id: '9', name: 'Pradeep Mishra', phone: '9876543218', pendingAmount: 3200, address: '89, Mayur Vihar, Delhi' },
-  { id: '10', name: 'Hari Prasad', phone: '9876543219', pendingAmount: 0, address: '11, Shahdara, Delhi' },
-  { id: '11', name: 'Naresh Aggarwal', phone: '9876543220', pendingAmount: 650, address: '33, Ashok Vihar, Delhi' },
-  { id: '12', name: 'Dinesh Kapoor', phone: '9876543221', pendingAmount: 0, address: '77, Model Town, Delhi' },
+  { id: '1', name: 'Rajesh Kumar', phone: '7877965097', pendingAmount: 2500, address: '12-B, Karol Bagh, Delhi', creditLimit: 5000, tags: ['retail'], area: 'Karol Bagh', pincode: '110005', email: 'rajesh.k@gmail.com' },
+  { id: '2', name: 'Sunil Sharma', phone: '9876543211', pendingAmount: 0, address: '45, Lajpat Nagar, Delhi', creditLimit: 10000, tags: ['vip', 'wholesale'], gstin: '07AAACS1245N1Z6', area: 'Lajpat Nagar', pincode: '110024' },
+  { id: '3', name: 'Amit Patel', phone: '9876543212', pendingAmount: 1200, address: '78, Nehru Place, Delhi', creditLimit: 3000, tags: ['retail'], area: 'Nehru Place', pincode: '110019' },
+  { id: '4', name: 'Vikram Singh', phone: '9876543213', pendingAmount: 4800, address: '90, Rohini, Delhi', creditLimit: 5000, tags: ['retail'], area: 'Rohini', pincode: '110085' },
+  { id: '5', name: 'Manoj Gupta', phone: '9876543214', pendingAmount: 350, address: '23, Pitampura, Delhi', creditLimit: 3000, tags: ['retail'], area: 'Pitampura', pincode: '110034' },
+  { id: '6', name: 'Deepak Verma', phone: '9876543215', pendingAmount: 0, address: '56, Vasant Kunj, Delhi', creditLimit: 8000, tags: ['vip'], area: 'Vasant Kunj', pincode: '110070' },
+  { id: '7', name: 'Sanjay Yadav', phone: '9876543216', pendingAmount: 1800, address: '34, Dwarka, Delhi', creditLimit: 4000, tags: ['retail'], area: 'Dwarka', pincode: '110075' },
+  { id: '8', name: 'Ravi Tiwari', phone: '9876543217', pendingAmount: 0, address: '67, Saket, Delhi', creditLimit: 5000, tags: ['retail'], area: 'Saket', pincode: '110017' },
+  { id: '9', name: 'Pradeep Mishra', phone: '9876543218', pendingAmount: 3200, address: '89, Mayur Vihar, Delhi', creditLimit: 5000, tags: ['retail'], gstin: '07AAACP9988R1Z4', area: 'Mayur Vihar', pincode: '110091' },
+  { id: '10', name: 'Hari Prasad', phone: '9876543219', pendingAmount: 0, address: '11, Shahdara, Delhi', creditLimit: 4000, tags: ['retail'], area: 'Shahdara', pincode: '110032' },
+  { id: '11', name: 'Naresh Aggarwal', phone: '9876543220', pendingAmount: 650, address: '33, Ashok Vihar, Delhi', creditLimit: 6000, tags: ['wholesale'], gstin: '07AAACN5544Q1Z2', area: 'Ashok Vihar', pincode: '110052' },
+  { id: '12', name: 'Dinesh Kapoor', phone: '9876543221', pendingAmount: 0, address: '77, Model Town, Delhi', creditLimit: 5000, tags: ['retail'], area: 'Model Town', pincode: '110009' },
 ];
 
 export const bills: Bill[] = [
@@ -113,6 +130,7 @@ export const bills: Bill[] = [
     paymentMethod: 'upi',
     isUdhaar: true,
     paid: false,
+    createdBy: 'Priya Sharma',
   },
   {
     id: 'B002',
@@ -125,6 +143,7 @@ export const bills: Bill[] = [
     paymentMethod: 'cash',
     isUdhaar: false,
     paid: true,
+    createdBy: 'Priya Sharma',
   },
   {
     id: 'B003',
@@ -138,6 +157,7 @@ export const bills: Bill[] = [
     paymentMethod: 'card',
     isUdhaar: false,
     paid: true,
+    createdBy: 'Rahul Mehta',
   },
   {
     id: 'B004',
@@ -151,6 +171,7 @@ export const bills: Bill[] = [
     paymentMethod: 'upi',
     isUdhaar: true,
     paid: false,
+    createdBy: 'Priya Sharma',
   },
   {
     id: 'B005',
@@ -163,6 +184,7 @@ export const bills: Bill[] = [
     paymentMethod: 'cash',
     isUdhaar: false,
     paid: true,
+    createdBy: 'Priya Sharma',
   },
   {
     id: 'B006',
@@ -176,6 +198,7 @@ export const bills: Bill[] = [
     paymentMethod: 'upi',
     isUdhaar: true,
     paid: false,
+    createdBy: 'Rahul Mehta',
   },
   {
     id: 'B007',
@@ -189,6 +212,7 @@ export const bills: Bill[] = [
     paymentMethod: 'cash',
     isUdhaar: false,
     paid: true,
+    createdBy: 'Priya Sharma',
   },
   {
     id: 'B008',
@@ -202,6 +226,7 @@ export const bills: Bill[] = [
     paymentMethod: 'upi',
     isUdhaar: true,
     paid: false,
+    createdBy: 'Rahul Mehta',
   },
   {
     id: 'B009',
@@ -214,6 +239,7 @@ export const bills: Bill[] = [
     paymentMethod: 'cash',
     isUdhaar: false,
     paid: true,
+    createdBy: 'Priya Sharma',
   },
   {
     id: 'B010',
@@ -227,6 +253,7 @@ export const bills: Bill[] = [
     paymentMethod: 'upi',
     isUdhaar: false,
     paid: true,
+    createdBy: 'Priya Sharma',
   },
   {
     id: 'B011',
@@ -240,6 +267,7 @@ export const bills: Bill[] = [
     paymentMethod: 'cash',
     isUdhaar: true,
     paid: false,
+    createdBy: 'Rahul Mehta',
   },
   {
     id: 'B012',
@@ -253,6 +281,7 @@ export const bills: Bill[] = [
     paymentMethod: 'card',
     isUdhaar: false,
     paid: true,
+    createdBy: 'Priya Sharma',
   },
   {
     id: 'B013',
@@ -266,6 +295,7 @@ export const bills: Bill[] = [
     paymentMethod: 'upi',
     isUdhaar: false,
     paid: true,
+    createdBy: 'Rahul Mehta',
   },
   {
     id: 'B014',
@@ -278,6 +308,7 @@ export const bills: Bill[] = [
     paymentMethod: 'cash',
     isUdhaar: false,
     paid: true,
+    createdBy: 'Priya Sharma',
   },
   {
     id: 'B015',
@@ -291,7 +322,50 @@ export const bills: Bill[] = [
     paymentMethod: 'card',
     isUdhaar: false,
     paid: true,
+    createdBy: 'Rahul Mehta',
   },
+];
+
+export const heldBillsSeed: HeldBill[] = [
+  {
+    ref: 'DRAFT-1042',
+    createdAt: '2026-04-25T10:32:00',
+    customerId: '1',
+    customerName: 'Rajesh Kumar',
+    items: [{ ...inventoryItems[1], quantity: 1 }],
+    total: 850,
+    note: 'Customer stepped out to ATM',
+  },
+  {
+    ref: 'DRAFT-1043',
+    createdAt: '2026-04-25T11:48:00',
+    customerName: 'Walk-in',
+    items: [{ ...inventoryItems[0], quantity: 2 }, { ...inventoryItems[10], quantity: 1 }],
+    total: 1050,
+  },
+];
+
+export const ledgerEntries: LedgerEntry[] = [
+  // Rajesh Kumar (id: 1)
+  { id: 'L1', customerId: '1', date: '2026-04-25', kind: 'bill', description: 'Bill B001', debit: 1150, credit: 0, refId: 'B001' },
+  { id: 'L2', customerId: '1', date: '2026-04-12', kind: 'bill', description: 'Bill B-OLD-01', debit: 2200, credit: 0, refId: 'B-OLD-01' },
+  { id: 'L3', customerId: '1', date: '2026-04-05', kind: 'payment', description: 'Cash on counter', debit: 0, credit: 850 },
+  // Vikram Singh (id: 4)
+  { id: 'L4', customerId: '4', date: '2026-04-24', kind: 'bill', description: 'Bill B004', debit: 4500, credit: 0, refId: 'B004' },
+  { id: 'L5', customerId: '4', date: '2026-04-15', kind: 'bill', description: 'Bill B-OLD-04', debit: 1800, credit: 0, refId: 'B-OLD-04' },
+  { id: 'L6', customerId: '4', date: '2026-03-30', kind: 'payment', description: 'Bank transfer', debit: 0, credit: 1500 },
+  // Pradeep Mishra (id: 9)
+  { id: 'L7', customerId: '9', date: '2026-04-22', kind: 'bill', description: 'Bill B008', debit: 1800, credit: 0, refId: 'B008' },
+  { id: 'L8', customerId: '9', date: '2026-03-18', kind: 'bill', description: 'Bill B-OLD-09', debit: 2400, credit: 0, refId: 'B-OLD-09' },
+  { id: 'L9', customerId: '9', date: '2026-03-25', kind: 'payment', description: 'UPI Payment', debit: 0, credit: 1000 },
+];
+
+export const activityEntries: ActivityEntry[] = [
+  { id: 'A1', refKind: 'bill', refId: 'B001', kind: 'created', message: 'Bill created with 2 items', actor: 'Priya Sharma', at: '2026-04-25T09:30:00' },
+  { id: 'A2', refKind: 'customer', refId: '1', kind: 'reminder', message: 'WhatsApp reminder sent', actor: 'Rahul Mehta', at: '2026-04-24T18:10:00' },
+  { id: 'A3', refKind: 'item', refId: '8', kind: 'edited', message: 'Stock adjusted: -2 (sold)', actor: 'Karan Singh', at: '2026-04-24T11:20:00' },
+  { id: 'A4', refKind: 'bill', refId: 'B003', kind: 'paid', message: 'Marked as paid (Card)', actor: 'Rahul Mehta', at: '2026-04-24T15:42:00' },
+  { id: 'A5', refKind: 'item', refId: '12', kind: 'edited', message: 'Reorder level set to 6', actor: 'Karan Singh', at: '2026-04-22T10:00:00' },
 ];
 
 export const staffMembers: StaffMember[] = [
@@ -307,14 +381,16 @@ export const staffInvites: StaffInvite[] = [
 ];
 
 export const expenses: Expense[] = [
-  { id: 'E001', date: '2026-04-25', description: 'Shop rent', amount: 15000, category: 'Rent' },
-  { id: 'E002', date: '2026-04-24', description: 'Electricity bill', amount: 2800, category: 'Utilities' },
-  { id: 'E003', date: '2026-04-23', description: 'Staff salaries', amount: 35000, category: 'Salaries' },
-  { id: 'E004', date: '2026-04-22', description: 'Shop supplies', amount: 1200, category: 'Supplies' },
-  { id: 'E005', date: '2026-04-21', description: 'Internet & phone', amount: 800, category: 'Utilities' },
-  { id: 'E006', date: '2026-04-20', description: 'Packaging material', amount: 500, category: 'Supplies' },
-  { id: 'E007', date: '2026-04-19', description: 'Repair & maintenance', amount: 2500, category: 'Maintenance' },
-  { id: 'E008', date: '2026-04-18', description: 'Advertising', amount: 3000, category: 'Marketing' },
+  { id: 'E001', date: '2026-04-25', description: 'Shop rent — April', amount: 15000, category: 'Rent', vendor: 'Mr. Khanna (landlord)', recurring: true, paymentMethod: 'upi' },
+  { id: 'E002', date: '2026-04-24', description: 'Electricity bill', amount: 2800, category: 'Utilities', vendor: 'BSES Rajdhani', recurring: true, paymentMethod: 'upi' },
+  { id: 'E003', date: '2026-04-23', description: 'Staff salaries', amount: 35000, category: 'Salaries', recurring: true, paymentMethod: 'cash' },
+  { id: 'E004', date: '2026-04-22', description: 'Shop supplies — pen, register, glue', amount: 1200, category: 'Supplies', vendor: 'Shyam Stationery', paymentMethod: 'cash' },
+  { id: 'E005', date: '2026-04-21', description: 'Internet & phone', amount: 800, category: 'Utilities', vendor: 'Airtel', recurring: true, paymentMethod: 'upi' },
+  { id: 'E006', date: '2026-04-20', description: 'Packaging material', amount: 500, category: 'Supplies', vendor: 'Local market', paymentMethod: 'cash' },
+  { id: 'E007', date: '2026-04-19', description: 'AC servicing', amount: 2500, category: 'Maintenance', vendor: 'Voltas service', paymentMethod: 'upi' },
+  { id: 'E008', date: '2026-04-18', description: 'Newspaper ad — local insert', amount: 3000, category: 'Marketing', vendor: 'Hindustan Times', paymentMethod: 'card' },
+  { id: 'E009', date: '2026-04-15', description: 'Tea & snacks for staff', amount: 450, category: 'Misc', paymentMethod: 'cash' },
+  { id: 'E010', date: '2026-04-12', description: 'GST consultant fees', amount: 2000, category: 'Misc', vendor: 'Gupta & Associates', paymentMethod: 'upi' },
 ];
 
 export const purchases: Purchase[] = [
@@ -322,33 +398,52 @@ export const purchases: Purchase[] = [
     id: 'P001',
     date: '2026-04-23',
     supplier: 'Mehta Auto Distributors',
+    supplierId: 'S1',
     items: [{ name: 'Engine Oil 5W-30', quantity: 50, price: 380 }, { name: 'Oil Filter', quantity: 40, price: 120 }],
     total: 23800,
     paid: true,
+    status: 'received',
   },
   {
     id: 'P002',
     date: '2026-04-20',
     supplier: 'Singh Spare Parts',
+    supplierId: 'S2',
     items: [{ name: 'Brake Pad Set', quantity: 20, price: 700 }, { name: 'Clutch Plate', quantity: 10, price: 1000 }],
     total: 24000,
     paid: true,
+    status: 'received',
   },
   {
     id: 'P003',
     date: '2026-04-17',
     supplier: 'Delhi Auto Wholesale',
+    supplierId: 'S3',
     items: [{ name: 'Battery 12V 65Ah', quantity: 5, price: 3800 }, { name: 'Shock Absorber', quantity: 6, price: 1500 }],
     total: 28000,
     paid: false,
+    status: 'received',
   },
   {
     id: 'P004',
     date: '2026-04-14',
     supplier: 'Mehta Auto Distributors',
+    supplierId: 'S1',
     items: [{ name: 'Air Filter', quantity: 30, price: 200 }, { name: 'Fuel Filter', quantity: 25, price: 150 }],
     total: 9750,
     paid: true,
+    status: 'received',
+  },
+  {
+    id: 'P005',
+    date: '2026-04-26',
+    supplier: 'Bharat Motor Spares',
+    supplierId: 'S4',
+    items: [{ name: 'Timing Belt', quantity: 10, price: 480 }, { name: 'Radiator Hose', quantity: 12, price: 360 }],
+    total: 9120,
+    paid: false,
+    status: 'placed',
+    expectedDate: '2026-04-30',
   },
 ];
 

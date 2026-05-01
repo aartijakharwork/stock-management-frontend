@@ -12,10 +12,13 @@ import {
   X,
   Store,
   BarChart3,
+  Wallet,
+  Truck,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionContext';
+import { isModuleVisible } from '../../config/mvp';
 import type { AppModule } from '../../types';
 
 interface ShopSidebarProps {
@@ -50,6 +53,8 @@ const navGroups: NavGroup[] = [
       { to: '/shop/inventory', icon: Package, label: 'Inventory', module: 'inventory' },
       { to: '/shop/customers', icon: Users, label: 'Customers', module: 'customers' },
       { to: '/shop/bills', icon: FileText, label: 'Bills History', module: 'bills' },
+      { to: '/shop/expenses', icon: Wallet, label: 'Expenses', module: 'expenses' },
+      { to: '/shop/suppliers', icon: Truck, label: 'Suppliers', module: 'suppliers' },
     ],
   },
   {
@@ -76,7 +81,7 @@ export function ShopSidebar({ open, onClose }: ShopSidebarProps) {
 
   const filteredGroups = navGroups.map(group => ({
     ...group,
-    items: group.items.filter(item => canAccessModule(item.module)),
+    items: group.items.filter(item => canAccessModule(item.module) && isModuleVisible(item.module)),
   })).filter(group => group.items.length > 0);
 
   return (

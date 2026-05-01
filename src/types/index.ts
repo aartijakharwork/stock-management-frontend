@@ -1,5 +1,6 @@
 export type UserRole = 'admin' | 'shopkeeper' | 'staff';
 export type PaymentMethod = 'cash' | 'card' | 'upi';
+export type CustomerTag = 'wholesale' | 'retail' | 'vip';
 
 export interface AuthUser {
   id: string;
@@ -13,7 +14,13 @@ export interface AuthUser {
   staffRoleId?: string;
 }
 
-export type AppModule = 'dashboard' | 'inventory' | 'billing' | 'customers' | 'bills' | 'staff' | 'roles' | 'settings' | 'subscription';
+/** User-defined product category for inventory (name is stored on each {@link InventoryItem}). */
+export interface ProductCategory {
+  id: string;
+  name: string;
+}
+
+export type AppModule = 'dashboard' | 'inventory' | 'billing' | 'customers' | 'bills' | 'staff' | 'roles' | 'settings' | 'subscription' | 'expenses' | 'suppliers';
 export type ModuleAction = 'view' | 'add' | 'edit' | 'delete';
 
 export interface ModulePermissions {
@@ -33,12 +40,14 @@ export interface RolePermissions {
   roles: ModulePermissions;
   settings: ModulePermissions;
   subscription: ModulePermissions;
+  expenses?: ModulePermissions;
+  suppliers?: ModulePermissions;
 }
 
 export const DEFAULT_MODULE_PERMISSIONS: ModulePermissions = { view: false, add: false, edit: false, delete: false };
 export const ALL_MODULE_PERMISSIONS: ModulePermissions = { view: true, add: true, edit: true, delete: true };
 
-export const ALL_MODULES: AppModule[] = ['dashboard', 'inventory', 'billing', 'customers', 'bills', 'staff', 'roles', 'settings', 'subscription'];
+export const ALL_MODULES: AppModule[] = ['dashboard', 'inventory', 'billing', 'customers', 'bills', 'staff', 'roles', 'settings', 'subscription', 'expenses', 'suppliers'];
 export const ALL_ACTIONS: ModuleAction[] = ['view', 'add', 'edit', 'delete'];
 
 export interface InventoryItem {
@@ -48,10 +57,23 @@ export interface InventoryItem {
   stock: number;
   category: string;
   unit: string;
+  // Phase 2 extensions — all optional so legacy data keeps working
+  costPrice?: number;
+  sku?: string;
+  barcode?: string;
+  reorderLevel?: number;
+  supplierId?: string;
+  hsn?: string;
+  taxRate?: number; // percent, defaults to 18
+  expiryDate?: string; // ISO
+  batchNo?: string;
+  imageUrl?: string;
+  lastSoldAt?: string; // ISO — derived but cached for performance
 }
 
 export interface CartItem extends InventoryItem {
   quantity: number;
+  lineDiscount?: number; // flat ₹ off this line
 }
 
 export interface Customer {
@@ -60,6 +82,21 @@ export interface Customer {
   phone: string;
   pendingAmount: number;
   address?: string;
+  // Phase 2 extensions
+  gstin?: string;
+  creditLimit?: number;
+  tags?: CustomerTag[];
+  birthday?: string;       // MM-DD or full ISO
+  anniversary?: string;
+  area?: string;
+  pincode?: string;
+  lastReminderAt?: string; // ISO
+  email?: string;
+}
+
+export interface SplitTender {
+  method: PaymentMethod | 'udhaar';
+  amount: number;
 }
 
 export interface Bill {
@@ -75,14 +112,77 @@ export interface Bill {
   isUdhaar: boolean;
   paid: boolean;
   note?: string;
+  // Phase 2 extensions
+  splitTenders?: SplitTender[];
+  roundOff?: number;
+  returnedAgainst?: string; // bill ID this is a return for (credit note)
+  isReturn?: boolean;
+  createdBy?: string;
+  editedBy?: string;
+  editedAt?: string;
 }
+
+export interface HeldBill {
+  ref: string; // DRAFT-XXXX
+  createdAt: string;
+  customerId?: string;
+  customerName: string;
+  items: CartItem[];
+  total: number;
+  note?: string;
+}
+
+export type LedgerEntryKind = 'bill' | 'payment' | 'adjustment' | 'return';
+
+export interface LedgerEntry {
+  id: string;
+  customerId: string;
+  date: string;
+  kind: LedgerEntryKind;
+  description: string;
+  debit: number;   // amount they owe (bill total)
+  credit: number;  // amount paid (payment received)
+  refId?: string;  // bill / return reference
+}
+
+export interface Supplier {
+  id: string;
+  name: string;
+  contactPerson?: string;
+  phone: string;
+  email?: string;
+  address?: string;
+  gstin?: string;
+  payableBalance: number;
+  lastOrderDate?: string;
+  notes?: string;
+}
+
+export type ActivityKind = 'created' | 'edited' | 'paid' | 'returned' | 'deleted' | 'reminder' | 'note';
+
+export interface ActivityEntry {
+  id: string;
+  refKind: 'bill' | 'customer' | 'item';
+  refId: string;
+  kind: ActivityKind;
+  message: string;
+  actor: string; // staff name
+  at: string;    // ISO
+}
+
+export type ExpenseCategory = 'Rent' | 'Salaries' | 'Utilities' | 'Inventory' | 'Marketing' | 'Maintenance' | 'Supplies' | 'Misc';
 
 export interface Expense {
   id: string;
   date: string;
   description: string;
   amount: number;
-  category: string;
+  category: ExpenseCategory | string;
+  vendor?: string;
+  recurring?: boolean;
+  receiptUrl?: string;
+  paymentMethod?: PaymentMethod;
+  note?: string;
 }
 
 export interface PurchaseItem {
@@ -91,13 +191,19 @@ export interface PurchaseItem {
   price: number;
 }
 
+export type PurchaseStatus = 'draft' | 'placed' | 'received' | 'cancelled';
+
 export interface Purchase {
   id: string;
   date: string;
   supplier: string;
+  supplierId?: string;
   items: PurchaseItem[];
   total: number;
   paid: boolean;
+  status?: PurchaseStatus;
+  expectedDate?: string;
+  notes?: string;
 }
 
 export interface StaffMember {

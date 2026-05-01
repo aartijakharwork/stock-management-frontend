@@ -4,7 +4,7 @@ import type { SortState } from '../../types';
 
 interface Column<T> {
   key: string;
-  header: string;
+  header: ReactNode;
   render: (item: T) => ReactNode;
   className?: string;
   sortable?: boolean;
@@ -15,6 +15,7 @@ interface TableProps<T> {
   data: T[];
   keyExtractor: (item: T) => string;
   emptyMessage?: string;
+  emptyState?: ReactNode;
   onRowClick?: (item: T) => void;
   page?: number;
   pageSize?: number;
@@ -112,7 +113,7 @@ function generatePageNumbers(current: number, total: number): (number | '...')[]
   return pages;
 }
 
-export function Table<T>({ columns, data, keyExtractor, emptyMessage = 'No data found', onRowClick, page, totalPages, total, onPageChange, sortState, onSort, startIndex, endIndex }: TableProps<T>) {
+export function Table<T>({ columns, data, keyExtractor, emptyMessage = 'No data found', emptyState, onRowClick, page, totalPages, total, onPageChange, sortState, onSort, startIndex, endIndex }: TableProps<T>) {
   const showPagination = page !== undefined && totalPages !== undefined && total !== undefined && onPageChange;
 
   return (
@@ -138,8 +139,8 @@ export function Table<T>({ columns, data, keyExtractor, emptyMessage = 'No data 
           <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
             {data.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="text-center text-gray-500 text-sm py-12">
-                  {emptyMessage}
+                <td colSpan={columns.length} className="text-center text-gray-500 text-sm py-2">
+                  {emptyState ?? <div className="py-10">{emptyMessage}</div>}
                 </td>
               </tr>
             ) : (
@@ -147,7 +148,7 @@ export function Table<T>({ columns, data, keyExtractor, emptyMessage = 'No data 
                 <tr
                   key={keyExtractor(item)}
                   onClick={() => onRowClick?.(item)}
-                  className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${onRowClick ? 'cursor-pointer' : ''}`}
+                  className={`row-hover hover:bg-emerald-50/40 dark:hover:bg-emerald-500/5 ${onRowClick ? 'cursor-pointer' : ''}`}
                 >
                   {columns.map(col => (
                     <td key={col.key} className={`px-4 py-3 ${col.className || ''}`}>

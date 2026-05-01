@@ -66,6 +66,176 @@ input:focus, select:focus, textarea:focus {
   animation: slideInDown 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+/* Skeleton shimmer */
+@keyframes skeletonShimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(90deg, rgba(0,0,0,0.04) 0%, rgba(0,0,0,0.08) 50%, rgba(0,0,0,0.04) 100%);
+  background-size: 200% 100%;
+  animation: skeletonShimmer 1.4s ease-in-out infinite;
+}
+.dark .skeleton-shimmer {
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 100%);
+  background-size: 200% 100%;
+}
+
+/* Tab panel entrance */
+@keyframes tabEnter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-tab-enter {
+  animation: tabEnter 0.2s ease-out both;
+}
+
+/* Checkbox / radio pop */
+@keyframes checkPop {
+  0%   { transform: scale(0); }
+  60%  { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+.animate-check-pop {
+  animation: checkPop 0.18s ease-out both;
+}
+
+/* Tooltip entrance */
+@keyframes tooltipIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.animate-tooltip-in {
+  animation: tooltipIn 0.12s ease-out both;
+}
+
+/* Page route transition */
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-page-enter {
+  animation: pageEnter 0.25s ease-out both;
+}
+
+/* Modal backdrop + panel entrance */
+@keyframes backdropIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes modalSlideUp {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-backdrop-in {
+  animation: backdropIn 0.2s ease-out both;
+}
+.animate-modal-in {
+  animation: modalSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Success checkmark */
+@keyframes successPop {
+  0%   { transform: scale(0) rotate(-45deg); opacity: 0; }
+  50%  { transform: scale(1.1) rotate(0deg); opacity: 1; }
+  70%  { transform: scale(0.95); }
+  100% { transform: scale(1); }
+}
+@keyframes successRing {
+  0%   { transform: scale(0.8); opacity: 0; }
+  50%  { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.3); opacity: 0; }
+}
+.animate-success-pop {
+  animation: successPop 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.animate-success-ring {
+  animation: successRing 0.8s ease-out 0.15s both;
+}
+
+/* Fade in for skeleton→content swap */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up {
+  animation: fadeInUp 0.3s ease-out both;
+}
+
+/* Button press */
+button {
+  transition: transform 0.08s ease-out, background-color 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+button:active:not(:disabled) {
+  transform: scale(0.97);
+  filter: brightness(0.96);
+}
+
+/* Card hover lift */
+.hover-lift {
+  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -4px rgba(0, 0, 0, 0.10), 0 2px 6px -2px rgba(0, 0, 0, 0.06);
+}
+html.dark .hover-lift:hover {
+  box-shadow: 0 6px 16px -4px rgba(0, 0, 0, 0.4), 0 2px 6px -2px rgba(0, 0, 0, 0.3);
+}
+
+/* Search match highlight pulse */
+@keyframes searchMatchPulse {
+  0%   { background-color: rgba(16, 185, 129, 0.18); }
+  100% { background-color: transparent; }
+}
+.animate-search-match {
+  animation: searchMatchPulse 1.2s ease-out 1;
+}
+
+/* Subtle list row highlight */
+.row-hover {
+  transition: background-color 0.15s ease;
+}
+
+/* Ripple-like glow on click for primary CTAs */
+@keyframes ctaPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+  100% { box-shadow: 0 0 0 12px rgba(16, 185, 129, 0); }
+}
+.animate-cta-pulse {
+  animation: ctaPulse 0.6s ease-out 1;
+}
+
+/* Haptic-style success bump */
+@keyframes successBump {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.05); }
+  60%  { transform: scale(0.98); }
+  100% { transform: scale(1); }
+}
+.animate-success-bump {
+  animation: successBump 0.4s ease-out 1;
+}
+
+/* Barcode scanner viewport scan line */
+@keyframes scanLine {
+  0%   { transform: translateY(-30px); opacity: 0.8; }
+  50%  { transform: translateY(30px); opacity: 1; }
+  100% { transform: translateY(-30px); opacity: 0.8; }
+}
+.animate-scan-line {
+  animation: scanLine 1.6s ease-in-out infinite;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 @media print {
   .no-print { display: none !important; }
 }

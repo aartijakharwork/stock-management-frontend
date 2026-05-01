@@ -1,12 +1,12 @@
-import type { InputHTMLAttributes } from 'react';
+import type { InputHTMLAttributes, ReactNode } from 'react';
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
-  label?: string;
+  label?: ReactNode;
   error?: string;
 }
 
 export function Input({ label, error, className = '', id, ...props }: InputProps) {
-  const inputId = id || label?.toLowerCase().replace(/\s+/g, '-');
+  const inputId = id || (typeof label === 'string' ? label.toLowerCase().replace(/\s+/g, '-') : undefined);
   return (
     <div className="flex flex-col gap-1.5">
       {label && (

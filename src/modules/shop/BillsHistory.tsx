@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Eye, Phone, Printer, IndianRupee, Receipt, Clock, Banknote, Smartphone, CreditCard as CardIcon } from 'lucide-react';
 import { SearchInput } from '../../components/ui/SearchInput';
 import { Table } from '../../components/ui/Table';
@@ -7,17 +7,50 @@ import { Dropdown } from '../../components/ui/Dropdown';
 import { Card, StatCard } from '../../components/ui/Card';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { ExportMenu } from '../../components/ui/ExportMenu';
+import { CardListSkeleton, TableSkeleton } from '../../components/ui/Skeleton';
+import { Link } from 'react-router-dom';
 import { bills as initialBills, customers } from '../../data/shop-dummy';
-import { formatCurrency, formatDate } from '../../utils/formatters';
+import { formatCurrency, formatDate, formatInvoiceNo, gstBreakdown, formatRelativeTime } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { usePermissions } from '../../context/PermissionContext';
 import { usePagination } from '../../hooks/usePagination';
+import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
 import type { Bill } from '../../types';
+import type { ExportColumn } from '../../utils/exporters';
 
 type DateRange = '' | 'today' | '7d' | '30d';
 type StatusFilter = '' | 'paid' | 'udhaar';
 
 const TODAY = '2026-04-25';
+
+const billStatusLabel = (b: Bill) => b.isUdhaar && !b.paid ? 'Udhaar' : b.isUdhaar && b.paid ? 'Settled' : 'Paid';
+
+const BILL_EXPORT_COLUMNS: ExportColumn<Bill>[] = [
+  { header: 'Invoice No.', accessor: b => formatInvoiceNo(b.id, b.date) },
+  { header: 'Internal Ref', accessor: b => b.id },
+  { header: 'Date', accessor: b => formatDate(b.date) },
+  { header: 'Customer', accessor: b => b.customerName },
+  { header: 'Items', accessor: b => b.items.length },
+  { header: 'Subtotal (₹)', accessor: b => b.subtotal ?? b.total },
+  { header: 'Discount (₹)', accessor: b => b.discount ?? 0 },
+  {
+    header: 'Taxable (₹)',
+    accessor: b => gstBreakdown(b.total).taxable,
+  },
+  {
+    header: 'CGST (₹)',
+    accessor: b => gstBreakdown(b.total).cgst,
+  },
+  {
+    header: 'SGST (₹)',
+    accessor: b => gstBreakdown(b.total).sgst,
+  },
+  { header: 'Total (₹)', accessor: b => b.total },
+  { header: 'Payment', accessor: b => b.paymentMethod ?? (b.isUdhaar ? 'udhaar' : 'cash') },
+  { header: 'Status', accessor: b => billStatusLabel(b) },
+];
 
 const isWithinRange = (dateStr: string, range: DateRange) => {
   if (!range) return true;
@@ -42,9 +75,27 @@ export function ShopBillsHistory() {
   const [range, setRange] = useState<DateRange>('');
   const [status, setStatus] = useState<StatusFilter>('');
   const [selected, setSelected] = useState<Bill | null>(null);
+  const [loading, setLoading] = useState(true);
   const { addToast } = useToast();
   const { can } = usePermissions();
+  const { track } = useRecentlyViewed();
   const canEdit = can('bills', 'edit');
+
+  const openBill = (b: Bill) => {
+    setSelected(b);
+    track({
+      kind: 'bill',
+      id: b.id,
+      label: formatInvoiceNo(b.id, b.date),
+      sublabel: `${b.customerName} · ${formatCurrency(b.total)}`,
+      to: '/shop/bills',
+    });
+  };
+
+  useEffect(() => {
+    const t = setTimeout(() => setLoading(false), 700);
+    return () => clearTimeout(t);
+  }, []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -77,8 +128,11 @@ export function ShopBillsHistory() {
     addToast('success', 'Bill marked as paid');
   };
 
-  const renderStatus = (b: Bill) =>
-    b.isUdhaar && !b.paid ? <Badge variant="warning">Udhaar</Badge> : <Badge variant="success">Paid</Badge>;
+  const renderStatus = (b: Bill) => {
+    if (b.isUdhaar && !b.paid) return <Badge variant="warning">Udhaar</Badge>;
+    if (b.isUdhaar && b.paid) return <Badge variant="success">Settled</Badge>;
+    return <Badge variant="success">Paid</Badge>;
+  };
 
   const selectedCustomer = useMemo(() => {
     if (!selected?.customerId) return null;
@@ -87,9 +141,19 @@ export function ShopBillsHistory() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Bills History</h1>
-        <p className="mt-1 text-sm text-gray-500">View and manage all past transactions.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Bills History</h1>
+          <p className="mt-1 text-sm text-gray-500">View and manage all past transactions.</p>
+        </div>
+        <ExportMenu<Bill>
+          baseName="bills"
+          title="Bills history export"
+          meta={`${filtered.length} of ${bills.length} bills`}
+          columns={BILL_EXPORT_COLUMNS}
+          rows={filtered}
+          size="md"
+        />
       </div>
 
       {/* Summary stats */}
@@ -128,14 +192,19 @@ export function ShopBillsHistory() {
 
       {/* Desktop table */}
       <div className="hidden sm:block">
-        <Table
+        {loading ? <TableSkeleton rows={6} columns={6} /> : <div className="animate-fade-in-up"><Table
           columns={[
-            { key: 'id', header: 'Bill', render: b => <span className="font-mono text-xs text-gray-600 dark:text-gray-400">{b.id}</span> },
+            { key: 'id', header: 'Invoice', render: b => <span className="font-mono text-xs text-gray-700 dark:text-gray-300">{formatInvoiceNo(b.id, b.date)}</span> },
             {
               key: 'date',
               header: 'Date',
               sortable: true,
-              render: b => <span className="text-sm text-gray-600 dark:text-gray-400">{formatDate(b.date)}</span>,
+              render: b => (
+                <div title={formatDate(b.date)}>
+                  <p className="text-sm text-gray-700 dark:text-gray-300">{formatDate(b.date)}</p>
+                  <p className="text-[11px] text-gray-400">{formatRelativeTime(b.date)}</p>
+                </div>
+              ),
             },
             {
               key: 'customer',
@@ -166,14 +235,31 @@ export function ShopBillsHistory() {
               header: '',
               className: 'text-right w-24',
               render: b => (
-                <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={e => { e.stopPropagation(); setSelected(b); }}>View</Button>
+                <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={e => { e.stopPropagation(); openBill(b); }}>View</Button>
               ),
             },
           ]}
           data={pagination.pageData}
           keyExtractor={b => b.id}
-          emptyMessage="No bills found"
-          onRowClick={b => setSelected(b)}
+          emptyState={
+            bills.length === 0 ? (
+              <EmptyState
+                icon={<Receipt size={28} />}
+                title="No bills yet"
+                description="Generate your first bill from the POS to see it here."
+                action={<Link to="/shop/billing"><Button variant="primary" icon={<Receipt size={14} />}>Open POS</Button></Link>}
+              />
+            ) : (
+              <EmptyState
+                icon={<Receipt size={28} />}
+                title="No bills match your filters"
+                description="Try a different date range, status, or search term."
+                action={<Button variant="secondary" size="sm" onClick={() => { setSearch(''); setRange(''); setStatus(''); }}>Clear filters</Button>}
+                compact
+              />
+            )
+          }
+          onRowClick={openBill}
           page={pagination.page}
           totalPages={pagination.totalPages}
           total={pagination.total}
@@ -182,20 +268,20 @@ export function ShopBillsHistory() {
           onSort={pagination.toggleSort}
           startIndex={pagination.startIndex}
           endIndex={pagination.endIndex}
-        />
+        /></div>}
       </div>
 
       {/* Mobile cards */}
       <div className="space-y-3 sm:hidden">
-        {pagination.pageData.map(b => (
+        {loading ? <CardListSkeleton rows={4} /> : <div className="animate-fade-in-up space-y-3">{pagination.pageData.map(b => (
           <button
             key={b.id}
             type="button"
-            onClick={() => setSelected(b)}
-            className="block w-full text-left bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4"
+            onClick={() => openBill(b)}
+            className="block w-full text-left bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 hover-lift active:scale-[0.99] transition-transform"
           >
             <div className="flex items-center justify-between gap-3">
-              <span className="font-mono text-xs text-gray-500">{b.id}</span>
+              <span className="font-mono text-xs text-gray-700 dark:text-gray-300">{formatInvoiceNo(b.id, b.date)}</span>
               {renderStatus(b)}
             </div>
             <p className="mt-2 font-medium text-gray-900 dark:text-white">{b.customerName}</p>
@@ -204,12 +290,27 @@ export function ShopBillsHistory() {
                 <span className="text-emerald-700 dark:text-emerald-400 font-semibold tabular-nums">{formatCurrency(b.total)}</span>
                 {b.discount ? <span className="ml-2 text-xs text-gray-400">–{formatCurrency(b.discount)}</span> : null}
               </div>
-              <span className="text-xs text-gray-500">{formatDate(b.date)}</span>
+              <div className="text-right">
+                <p className="text-xs text-gray-500">{formatDate(b.date)}</p>
+                <p className="text-[10px] text-gray-400">{formatRelativeTime(b.date)}</p>
+              </div>
             </div>
           </button>
-        ))}
-        {filtered.length === 0 && (
-          <p className="text-center text-sm text-gray-400 py-8">No bills found</p>
+        ))}</div>}
+        {!loading && filtered.length === 0 && (
+          <Card>
+            <EmptyState
+              icon={<Receipt size={26} />}
+              title={bills.length === 0 ? 'No bills yet' : 'No bills match your filters'}
+              description={bills.length === 0 ? 'Generate your first bill from the POS to see it here.' : 'Try a different filter.'}
+              action={
+                bills.length === 0
+                  ? <Link to="/shop/billing"><Button variant="primary" size="sm" icon={<Receipt size={14} />}>Open POS</Button></Link>
+                  : <Button variant="secondary" size="sm" onClick={() => { setSearch(''); setRange(''); setStatus(''); }}>Clear filters</Button>
+              }
+              compact
+            />
+          </Card>
         )}
       </div>
 
@@ -218,14 +319,16 @@ export function ShopBillsHistory() {
         {selected && (
           <div className="space-y-5">
             {/* Header info */}
-            <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 p-4 flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-xs text-gray-500">Bill No.</p>
-                <p className="font-mono text-sm font-semibold text-gray-900 dark:text-white">{selected.id}</p>
+                <p className="text-[10px] font-semibold tracking-wider text-gray-500 uppercase">Tax Invoice</p>
+                <p className="mt-0.5 font-mono text-base font-semibold text-gray-900 dark:text-white">{formatInvoiceNo(selected.id, selected.date)}</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">Internal ref · {selected.id}</p>
               </div>
               <div className="text-right">
                 <p className="text-xs text-gray-500">Date</p>
-                <p className="text-sm text-gray-600 dark:text-gray-400">{formatDate(selected.date)}</p>
+                <p className="text-sm text-gray-700 dark:text-gray-300">{formatDate(selected.date)}</p>
+                <p className="text-[11px] text-gray-400">{formatRelativeTime(selected.date)}</p>
               </div>
             </div>
 
@@ -266,10 +369,10 @@ export function ShopBillsHistory() {
 
             {/* Totals */}
             <div className="space-y-2 pt-2">
-              {(selected.subtotal ?? selected.total) !== selected.total && (
+              {selected.subtotal != null && (
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500">Subtotal</span>
-                  <span className="text-gray-700 dark:text-gray-300 tabular-nums">{formatCurrency(selected.subtotal!)}</span>
+                  <span className="text-gray-700 dark:text-gray-300 tabular-nums">{formatCurrency(selected.subtotal)}</span>
                 </div>
               )}
               {(selected.discount ?? 0) > 0 && (
@@ -278,10 +381,29 @@ export function ShopBillsHistory() {
                   <span className="text-emerald-600 tabular-nums">–{formatCurrency(selected.discount!)}</span>
                 </div>
               )}
+              {(() => {
+                const tax = gstBreakdown(selected.total);
+                return (
+                  <>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500">Taxable value</span>
+                      <span className="text-gray-700 dark:text-gray-300 tabular-nums">{formatCurrency(tax.taxable)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500">CGST @ 9%</span>
+                      <span className="text-gray-700 dark:text-gray-300 tabular-nums">{formatCurrency(tax.cgst)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-500">SGST @ 9%</span>
+                      <span className="text-gray-700 dark:text-gray-300 tabular-nums">{formatCurrency(tax.sgst)}</span>
+                    </div>
+                  </>
+                );
+              })()}
               <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-800">
                 <div className="flex items-center gap-3">{renderStatus(selected)}</div>
                 <div className="text-right">
-                  <p className="text-xs text-gray-500">Total</p>
+                  <p className="text-xs text-gray-500">Total (incl. GST)</p>
                   <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{formatCurrency(selected.total)}</p>
                 </div>
               </div>

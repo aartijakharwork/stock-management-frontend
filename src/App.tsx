@@ -1,9 +1,17 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import {
+  createBrowserRouter,
+  RouterProvider,
+  Navigate,
+  Outlet,
+  useLocation,
+} from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { PermissionProvider } from './context/PermissionContext';
 import { ToastProvider } from './context/ToastContext';
+import { ShopCatalogProvider } from './context/ShopCatalogContext';
 import { ToastContainer } from './components/ui/Toast';
+import { isPathHidden, MVP_HIDE_COMMAND_PALETTE } from './config/mvp';
 
 import { ShopLayout } from './components/layout/ShopLayout';
 
@@ -21,6 +29,10 @@ import { ShopRoles } from './modules/shop/Roles';
 import { ShopSettings } from './modules/shop/Settings';
 import { ShopSubscription } from './modules/shop/Subscription';
 import { ShopReports } from './modules/shop/Reports';
+import { ShopExpenses } from './modules/shop/Expenses';
+import { ShopSuppliers } from './modules/shop/Suppliers';
+import { ShopCustomerLedger } from './modules/shop/CustomerLedger';
+import { CommandPalette } from './components/ui/CommandPalette';
 
 import type { ReactNode } from 'react';
 
@@ -30,52 +42,92 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+// In MVP mode, redirect any module that's been hidden from nav back to the
+// dashboard. The route + component are still mounted-on-demand for power
+// users (set MVP_MODE = false in src/config/mvp.ts).
+function MvpGuard({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  if (isPathHidden(location.pathname)) return <Navigate to="/shop" replace />;
+  return <>{children}</>;
+}
+
 function AuthRedirect({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
   if (isAuthenticated) return <Navigate to="/shop" replace />;
   return <>{children}</>;
 }
 
-function AppRoutes() {
+/** Renders matched route + global overlays. Must sit under RouterProvider so hooks work. */
+function GlobalShell() {
   return (
-    <Routes>
-      {/* Auth */}
-      <Route path="/auth/login" element={<AuthRedirect><Login /></AuthRedirect>} />
-      <Route path="/auth/signup" element={<AuthRedirect><Signup /></AuthRedirect>} />
-      <Route path="/auth/forgot-password" element={<ForgotPassword />} />
-
-      {/* Shop Portal — shopkeeper gets full access, staff gets permission-filtered */}
-      <Route path="/shop" element={<ProtectedRoute><ShopLayout /></ProtectedRoute>}>
-        <Route index element={<ShopDashboard />} />
-        <Route path="inventory" element={<ShopInventory />} />
-        <Route path="billing" element={<ShopBilling />} />
-        <Route path="customers" element={<ShopCustomers />} />
-        <Route path="bills" element={<ShopBillsHistory />} />
-        <Route path="staff" element={<ShopStaff />} />
-        <Route path="roles" element={<ShopRoles />} />
-        <Route path="settings" element={<ShopSettings />} />
-        <Route path="subscription" element={<ShopSubscription />} />
-        <Route path="reports" element={<ShopReports />} />
-      </Route>
-
-      {/* Default redirect */}
-      <Route path="*" element={<Navigate to="/auth/login" replace />} />
-    </Routes>
+    <>
+      <Outlet />
+      {!MVP_HIDE_COMMAND_PALETTE && <CommandPalette />}
+      <ToastContainer />
+    </>
   );
 }
+
+/** Unknown URLs under /shop stay in the app; anything else goes to login. */
+function CatchAllRedirect() {
+  const location = useLocation();
+  if (location.pathname.startsWith('/shop')) {
+    return <Navigate to="/shop" replace />;
+  }
+  return <Navigate to="/auth/login" replace />;
+}
+
+// Data router enables useBlocker (e.g. UnsavedChangesGuard in Settings).
+const router = createBrowserRouter([
+  {
+    element: <GlobalShell />,
+    children: [
+      { path: '/', element: <Navigate to="/auth/login" replace /> },
+      { path: '/auth/login', element: <AuthRedirect><Login /></AuthRedirect> },
+      { path: '/auth/signup', element: <AuthRedirect><Signup /></AuthRedirect> },
+      { path: '/auth/forgot-password', element: <ForgotPassword /> },
+      {
+        path: '/shop',
+        element: (
+          <ProtectedRoute>
+            <MvpGuard>
+              <ShopLayout />
+            </MvpGuard>
+          </ProtectedRoute>
+        ),
+        children: [
+          { index: true, element: <ShopDashboard /> },
+          { path: 'inventory', element: <ShopInventory /> },
+          { path: 'categories', element: <Navigate to="/shop/settings?tab=categories" replace /> },
+          { path: 'billing', element: <ShopBilling /> },
+          { path: 'customers', element: <ShopCustomers /> },
+          { path: 'customers/:id', element: <ShopCustomerLedger /> },
+          { path: 'bills', element: <ShopBillsHistory /> },
+          { path: 'expenses', element: <ShopExpenses /> },
+          { path: 'suppliers', element: <ShopSuppliers /> },
+          { path: 'staff', element: <ShopStaff /> },
+          { path: 'roles', element: <ShopRoles /> },
+          { path: 'settings', element: <ShopSettings /> },
+          { path: 'subscription', element: <ShopSubscription /> },
+          { path: 'reports', element: <ShopReports /> },
+        ],
+      },
+      { path: '*', element: <CatchAllRedirect /> },
+    ],
+  },
+]);
 
 export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <PermissionProvider>
-          <ToastProvider>
-            <BrowserRouter>
-              <AppRoutes />
-              <ToastContainer />
-            </BrowserRouter>
-          </ToastProvider>
-        </PermissionProvider>
+        <ShopCatalogProvider>
+          <PermissionProvider>
+            <ToastProvider>
+              <RouterProvider router={router} />
+            </ToastProvider>
+          </PermissionProvider>
+        </ShopCatalogProvider>
       </AuthProvider>
     </ThemeProvider>
   );
