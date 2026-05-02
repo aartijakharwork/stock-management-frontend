@@ -11,7 +11,6 @@ import {
   CreditCard,
   X,
   Store,
-  BarChart3,
   Wallet,
   Truck,
   type LucideIcon,
@@ -43,7 +42,6 @@ const navGroups: NavGroup[] = [
     label: 'Overview',
     items: [
       { to: '/shop', icon: LayoutDashboard, label: 'Dashboard', module: 'dashboard' },
-      { to: '/shop/reports', icon: BarChart3, label: 'Reports', module: 'dashboard' },
     ],
   },
   {

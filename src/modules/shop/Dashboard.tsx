@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   Receipt, Clock, AlertTriangle, ArrowRight, ArrowUpRight, ArrowDownRight, PackageX,
   Share2, CheckCircle2, Phone, ShoppingCart, Users,
-  TrendingUp, TrendingDown, Banknote, Smartphone, CreditCard as CardIcon,
+  TrendingUp, Banknote, Smartphone, CreditCard as CardIcon,
   Activity, RefreshCw, Check, X as XIcon, Sparkles, ChevronRight,
 } from 'lucide-react';
 import {
@@ -17,7 +17,7 @@ import { Modal } from '../../components/ui/Modal';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { Spinner } from '../../components/ui/Spinner';
 import { EmptyState } from '../../components/ui/EmptyState';
-import { bills, customers, expenses } from '../../data/shop-dummy';
+import { bills, customers } from '../../data/shop-dummy';
 import { formatCurrency, formatInvoiceNo, formatRelativeTime } from '../../utils/formatters';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -150,8 +150,6 @@ export function ShopDashboard() {
   const pendingCustomers = useMemo(() => customers.filter(c => c.pendingAmount > 0), []);
   const lowStockItems = useMemo(() => inventoryItems.filter(i => i.stock <= 10).sort((a, b) => a.stock - b.stock), [inventoryItems]);
   const outOfStockItems = useMemo(() => inventoryItems.filter(i => i.stock === 0), [inventoryItems]);
-
-  const totalExpensesToday = useMemo(() => expenses.filter(e => e.date === TODAY).reduce((s, e) => s + e.amount, 0), []);
 
   const revenueSeries = useMemo(() => {
     const byDate = new Map<string, number>();
@@ -496,17 +494,6 @@ export function ShopDashboard() {
           </div>
         </div>
 
-        {/* Today's Expenses */}
-        <div className="rounded-xl p-4 flex items-center gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
-          <div className="w-9 h-9 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0">
-            <TrendingDown size={17} />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[11px] text-gray-500">Today's Expenses</p>
-            <p className="text-base font-bold text-gray-900 dark:text-white tabular-nums">{formatCurrency(totalExpensesToday)}</p>
-            <p className="text-[11px] text-gray-500">Tracked</p>
-          </div>
-        </div>
       </div>
 
       {/* Revenue Chart */}
