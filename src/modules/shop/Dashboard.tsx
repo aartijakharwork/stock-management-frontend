@@ -4,7 +4,7 @@ import {
   Receipt, Clock, AlertTriangle, ArrowRight, ArrowUpRight, ArrowDownRight, PackageX,
   Share2, CheckCircle2, Phone, ShoppingCart, Package, Users,
   TrendingUp, TrendingDown, Banknote, Smartphone, CreditCard as CardIcon,
-  Activity, RefreshCw, Check, X as XIcon, Sparkles, ChevronRight, History, FileText, User,
+  Activity, RefreshCw, Check, X as XIcon, Sparkles, ChevronRight,
 } from 'lucide-react';
 import {
   Area, AreaChart, CartesianGrid, Cell,
@@ -22,7 +22,6 @@ import { formatCurrency, formatInvoiceNo, formatRelativeTime } from '../../utils
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import { useRecentlyViewed, type RecentKind } from '../../hooks/useRecentlyViewed';
 import { useShopCatalog } from '../../context/ShopCatalogContext';
 
 const TODAY = '2026-04-25';
@@ -70,19 +69,12 @@ const CLEARED_TODAY = [
   { id: 'ct-2', name: 'Ravi Tiwari', phone: '9876543217', amount: 800 },
 ];
 
-const recentKindMeta: Record<RecentKind, { icon: typeof Receipt; tone: string; label: string }> = {
-  bill:     { icon: FileText, tone: 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400', label: 'Bill' },
-  customer: { icon: User,     tone: 'bg-purple-50 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400', label: 'Customer' },
-  item:     { icon: Package,  tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400', label: 'Item' },
-};
-
 export function ShopDashboard() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const { items: inventoryItems } = useShopCatalog();
   const { addToast } = useToast();
   const navigate = useNavigate();
-  const { items: recentItems, clear: clearRecent } = useRecentlyViewed();
   const isDark = theme === 'dark';
 
   const [lowStockOpen, setLowStockOpen] = useState(false);
@@ -333,99 +325,25 @@ export function ShopDashboard() {
         );
       })()}
 
-      {/* Primary actions — three big tap targets the shopkeeper does daily.
-          Create Bill is the hero; Add Item and Mark Payment are equal-weight
-          secondary actions. Sized for thumbs on mobile. */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* Primary actions — two natural-width buttons, left-aligned. New Bill is
+          the hero (filled emerald); Collect Payment is a secondary outline. */}
+      <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={() => navigate('/shop/billing')}
-          className="group relative overflow-hidden flex items-center gap-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 px-5 py-4 text-left text-white shadow-md hover:shadow-lg transition-all active:scale-[0.98]"
+          className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition active:scale-[0.98]"
         >
-          <div className="w-12 h-12 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
-            <ShoppingCart size={22} strokeWidth={2.2} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium uppercase tracking-wider text-emerald-100/90">Sale</p>
-            <p className="text-base font-bold leading-tight">Create Bill</p>
-            <p className="text-[11px] text-emerald-100/80 mt-0.5">Fastest way to record a sale</p>
-          </div>
-          <ArrowRight size={18} className="text-white/70 group-hover:translate-x-0.5 transition-transform shrink-0" />
-        </button>
-
-        <button
-          onClick={() => navigate('/shop/inventory')}
-          className="group flex items-center gap-3 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-emerald-300 dark:hover:border-emerald-500/40 px-5 py-4 text-left transition-all active:scale-[0.98] hover:shadow-md"
-        >
-          <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
-            <Package size={22} strokeWidth={2.2} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium uppercase tracking-wider text-gray-400">Stock</p>
-            <p className="text-base font-bold text-gray-900 dark:text-white leading-tight">Add Product</p>
-            <p className="text-[11px] text-gray-500 mt-0.5">New item or update stock</p>
-          </div>
-          <ChevronRight size={18} className="text-gray-300 dark:text-gray-600 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all shrink-0" />
+          <ShoppingCart size={16} strokeWidth={2.4} />
+          <span>New Bill</span>
         </button>
 
         <button
           onClick={() => navigate('/shop/customers')}
-          className="group flex items-center gap-3 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-emerald-300 dark:hover:border-emerald-500/40 px-5 py-4 text-left transition-all active:scale-[0.98] hover:shadow-md"
+          className="inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-emerald-300 dark:hover:border-emerald-500/40 px-5 py-2.5 text-sm font-semibold text-gray-900 dark:text-white transition active:scale-[0.98]"
         >
-          <div className="w-12 h-12 rounded-xl bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
-            <Users size={22} strokeWidth={2.2} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium uppercase tracking-wider text-gray-400">Udhaar</p>
-            <p className="text-base font-bold text-gray-900 dark:text-white leading-tight">Mark Payment</p>
-            <p className="text-[11px] text-gray-500 mt-0.5">Settle pending customer dues</p>
-          </div>
-          <ChevronRight size={18} className="text-gray-300 dark:text-gray-600 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all shrink-0" />
+          <Users size={16} strokeWidth={2.4} className="text-amber-600 dark:text-amber-400" />
+          <span>Collect Payment</span>
         </button>
       </div>
-
-      {/* Recently viewed strip */}
-      {recentItems.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-1.5">
-              <History size={14} className="text-gray-400" />
-              <h2 className="text-[12px] font-semibold uppercase tracking-wider text-gray-500">Continue where you left off</h2>
-            </div>
-            <button
-              onClick={clearRecent}
-              className="text-[11px] font-medium text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-            >
-              Clear
-            </button>
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-            {recentItems.map(it => {
-              const meta = recentKindMeta[it.kind];
-              const Icon = meta.icon;
-              return (
-                <Link
-                  key={`${it.kind}-${it.id}`}
-                  to={it.to}
-                  className="shrink-0 flex items-center gap-2.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2 hover:border-emerald-300 dark:hover:border-emerald-500/40 hover:shadow-sm transition-all min-w-[200px] max-w-[280px] group"
-                >
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${meta.tone}`}>
-                    <Icon size={15} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{meta.label}</span>
-                      <span className="text-[10px] text-gray-400">· {formatRelativeTime(it.viewedAt)}</span>
-                    </div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">{it.label}</p>
-                    {it.sublabel && <p className="text-[11px] text-gray-500 truncate">{it.sublabel}</p>}
-                  </div>
-                  <ChevronRight size={14} className="text-gray-300 group-hover:text-emerald-600 transition-colors shrink-0" />
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Hero KPI + Mini KPIs */}
       {kpiLoading ? (

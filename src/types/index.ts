@@ -59,6 +59,8 @@ export interface InventoryItem {
   unit: string;
   // Phase 2 extensions — all optional so legacy data keeps working
   costPrice?: number;
+  mrp?: number;
+  discountPercent?: number;
   sku?: string;
   barcode?: string;
   reorderLevel?: number;
@@ -104,6 +106,7 @@ export interface Bill {
   date: string;
   customerName: string;
   customerId?: string;
+  customerPhone?: string;
   items: CartItem[];
   subtotal?: number;
   discount?: number;
@@ -127,6 +130,7 @@ export interface HeldBill {
   createdAt: string;
   customerId?: string;
   customerName: string;
+  customerPhone?: string;
   items: CartItem[];
   total: number;
   note?: string;

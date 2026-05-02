@@ -100,7 +100,7 @@ interface TabPanelProps {
 export function TabPanel({ id, activeTab, children }: TabPanelProps) {
   if (id !== activeTab) return null;
   return (
-    <div role="tabpanel" className="animate-tab-enter">
+    <div role="tabpanel" className="space-y-6">
       {children}
     </div>
   );

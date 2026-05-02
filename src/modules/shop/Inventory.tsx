@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Plus,
   Pencil,
   Trash2,
   PackageX,
-  AlertTriangle,
   Package,
+  AlertTriangle,
   TrendingUp,
   ChevronDown,
   ChevronUp,
@@ -15,13 +15,15 @@ import {
   Tags,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
-import { Card, StatCard } from '../../components/ui/Card';
+import { Card } from '../../components/ui/Card';
+import { CompactStat } from '../../components/ui/CompactStat';
 import { SearchInput } from '../../components/ui/SearchInput';
 import { Table } from '../../components/ui/Table';
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
 import { Dropdown } from '../../components/ui/Dropdown';
+import { SearchableSelect } from '../../components/ui/SearchableSelect';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ExportMenu } from '../../components/ui/ExportMenu';
 import { CardListSkeleton, TableSkeleton } from '../../components/ui/Skeleton';
@@ -34,9 +36,8 @@ import { formatCurrency, generateId } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { usePermissions } from '../../context/PermissionContext';
 import { useShopCatalog } from '../../context/ShopCatalogContext';
-import { usePagination } from '../../hooks/usePagination';
 import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
-import type { InventoryItem } from '../../types';
+import type { InventoryItem, SortState } from '../../types';
 import type { ExportColumn } from '../../utils/exporters';
 
 const DEFAULT_REORDER = 10;
@@ -49,6 +50,8 @@ const emptyItem: Omit<InventoryItem, 'id'> = {
   category: '',
   unit: 'piece',
   costPrice: 0,
+  mrp: 0,
+  discountPercent: 0,
   sku: '',
   barcode: '',
   reorderLevel: DEFAULT_REORDER,
@@ -57,6 +60,12 @@ const emptyItem: Omit<InventoryItem, 'id'> = {
   taxRate: DEFAULT_TAX_RATE,
   expiryDate: '',
   batchNo: '',
+};
+
+const computeSellPrice = (mrp?: number, discountPercent?: number) => {
+  const m = mrp ?? 0;
+  const d = Math.max(0, Math.min(100, discountPercent ?? 0));
+  return Math.round(m * (1 - d / 100));
 };
 
 const isLowStock = (i: InventoryItem) => i.stock > 0 && i.stock <= (i.reorderLevel ?? DEFAULT_REORDER);
@@ -129,7 +138,8 @@ export function ShopInventory() {
   const [newCategory, setNewCategory] = useState('');
   const [addingCategory, setAddingCategory] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [showCost, setShowCost] = useState(false);
+  // Cost & margin columns are always visible — there is no toggle.
+  const showCost = true;
   const [importOpen, setImportOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -175,16 +185,43 @@ export function ShopInventory() {
     });
   }, [items, search, categoryFilter, stockFilter]);
 
-  const pagination = usePagination({
-    data: filtered,
-    pageSize: 10,
-    sortFns: {
-      item: (a, b) => a.name.localeCompare(b.name),
-      price: (a, b) => a.price - b.price,
-      stock: (a, b) => a.stock - b.stock,
-      margin: (a, b) => (calcMargin(a.costPrice, a.price) ?? -1) - (calcMargin(b.costPrice, b.price) ?? -1),
-    },
-  });
+  const [sortState, setSortState] = useState<SortState | null>(null);
+  const sortFns: Record<string, (a: InventoryItem, b: InventoryItem) => number> = {
+    item: (a, b) => a.name.localeCompare(b.name),
+    price: (a, b) => a.price - b.price,
+    stock: (a, b) => a.stock - b.stock,
+    margin: (a, b) => (calcMargin(a.costPrice, a.price) ?? -1) - (calcMargin(b.costPrice, b.price) ?? -1),
+  };
+  const sorted = useMemo(() => {
+    if (!sortState || !sortFns[sortState.key]) return filtered;
+    const arr = [...filtered].sort(sortFns[sortState.key]);
+    return sortState.direction === 'desc' ? arr.reverse() : arr;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, sortState]);
+  const toggleSort = (key: string) => {
+    setSortState(prev => {
+      if (!prev || prev.key !== key) return { key, direction: 'asc' };
+      if (prev.direction === 'asc') return { key, direction: 'desc' };
+      return null;
+    });
+  };
+
+  const PAGE = 25;
+  const [displayCount, setDisplayCount] = useState(PAGE);
+  useEffect(() => { setDisplayCount(PAGE); }, [search, categoryFilter, stockFilter, sortState, items.length]);
+  const visible = sorted.slice(0, displayCount);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setDisplayCount(c => Math.min(c + PAGE, sorted.length));
+      }
+    }, { rootMargin: '300px' });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [sorted.length, displayCount]);
 
   const totalValue = useMemo(() => items.reduce((s, i) => s + i.price * i.stock, 0), [items]);
   const lowStockCount = useMemo(() => items.filter(isLowStock).length, [items]);
@@ -208,6 +245,10 @@ export function ShopInventory() {
       category: item.category,
       unit: item.unit,
       costPrice: item.costPrice ?? 0,
+      // Back-fill MRP/discount for legacy items: treat the existing price as
+      // MRP with 0% discount so the form renders sensibly.
+      mrp: item.mrp ?? item.price ?? 0,
+      discountPercent: item.discountPercent ?? 0,
       sku: item.sku ?? '',
       barcode: item.barcode ?? '',
       reorderLevel: item.reorderLevel ?? DEFAULT_REORDER,
@@ -248,14 +289,20 @@ export function ShopInventory() {
       addToast('error', 'Please fill required fields');
       return;
     }
-    if (form.costPrice && form.price && form.costPrice > form.price) {
-      addToast('warning', 'Cost is higher than sell price — margin will be negative');
+    if (!form.mrp || form.mrp <= 0) {
+      addToast('error', 'MRP is required');
+      return;
     }
+    const sellPrice = computeSellPrice(form.mrp, form.discountPercent);
+    if (form.costPrice && sellPrice && form.costPrice > sellPrice) {
+      addToast('warning', 'Cost is higher than selling price — margin will be negative');
+    }
+    const next = { ...form, price: sellPrice };
     if (editing) {
-      setItems(prev => prev.map(i => i.id === editing.id ? { ...i, ...form } : i));
+      setItems(prev => prev.map(i => i.id === editing.id ? { ...i, ...next } : i));
       addToast('success', 'Item updated');
     } else {
-      setItems(prev => [...prev, { id: generateId(), ...form }]);
+      setItems(prev => [...prev, { id: generateId(), ...next }]);
       addToast('success', 'Item added');
     }
     setModalOpen(false);
@@ -274,11 +321,11 @@ export function ShopInventory() {
       return next;
     });
   };
-  const allPageSelected = pagination.pageData.length > 0 && pagination.pageData.every(i => selectedIds.has(i.id));
-  const somePageSelected = pagination.pageData.some(i => selectedIds.has(i.id));
+  const allPageSelected = visible.length > 0 && visible.every(i => selectedIds.has(i.id));
+  const somePageSelected = visible.some(i => selectedIds.has(i.id));
   const toggleSelectAll = () => {
     if (allPageSelected) setSelectedIds(new Set());
-    else setSelectedIds(new Set(pagination.pageData.map(i => i.id)));
+    else setSelectedIds(new Set(visible.map(i => i.id)));
   };
   const bulkDelete = () => {
     if (!confirm(`Delete ${selectedIds.size} item${selectedIds.size === 1 ? '' : 's'}? This cannot be undone.`)) return;
@@ -287,22 +334,19 @@ export function ShopInventory() {
     setSelectedIds(new Set());
   };
 
-  const margin = calcMargin(form.costPrice, form.price);
   const supplierName = (id?: string) => suppliers.find(s => s.id === id)?.name;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Inventory</h1>
-          <p className="mt-1 text-sm text-gray-500">Manage items, prices, costs and stock levels.</p>
-        </div>
+    <div className="space-y-3">
+      {/* Title row — heading + actions */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-xl font-bold text-gray-900 dark:text-white">Inventory</h1>
         <div className="flex items-center gap-2 flex-wrap">
           <Link
             to="/shop/settings?tab=categories"
-            className="inline-flex items-center justify-center gap-2 rounded-lg font-medium h-10 px-4 text-[13px] border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:text-gray-900 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white"
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg font-medium h-9 px-3 text-xs border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:text-gray-900 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white"
           >
-            <Tags size={16} />
+            <Tags size={14} />
             Categories
           </Link>
           <ExportMenu<InventoryItem>
@@ -311,85 +355,84 @@ export function ShopInventory() {
             meta={`${filtered.length} of ${items.length} items`}
             columns={INVENTORY_EXPORT_COLUMNS}
             rows={filtered}
-            size="md"
+            size="sm"
           />
-          {canAdd && <Button variant="secondary" icon={<Upload size={16} />} onClick={() => setImportOpen(true)}>Bulk import</Button>}
-          {canAdd && <Button variant="primary" icon={<Plus size={16} />} onClick={openAdd}>Add item</Button>}
+          {canAdd && <Button variant="secondary" size="sm" icon={<Upload size={14} />} onClick={() => setImportOpen(true)}>Import</Button>}
+          {canAdd && <Button variant="primary" size="sm" icon={<Plus size={14} />} onClick={openAdd}>Add item</Button>}
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard title="Total Items" value={String(items.length)} icon={<Package size={18} />} />
-        <StatCard title="Stock Value" value={formatCurrency(totalValue)} icon={<TrendingUp size={18} />} />
-        <StatCard
-          title="Below Reorder"
+      {/* Compact stat tiles — full visual prominence, half the height of the old StatCards */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <CompactStat
+          icon={<Package size={16} />}
+          tone="emerald"
+          title="Total items"
+          value={String(items.length)}
+        />
+        <CompactStat
+          icon={<TrendingUp size={16} />}
+          tone="blue"
+          title="Stock value"
+          value={formatCurrency(totalValue)}
+        />
+        <CompactStat
+          icon={<AlertTriangle size={16} />}
+          tone={lowStockCount > 0 ? 'amber' : 'gray'}
+          title="Below reorder"
           value={String(lowStockCount)}
-          icon={<AlertTriangle size={18} />}
-          trend={lowStockCount > 0 ? 'Action needed' : 'All good'}
-          trendUp={lowStockCount === 0}
-          onClick={() => { setStockFilter('low'); setCategoryFilter(''); }}
+          subtitle={lowStockCount > 0 ? 'Action needed' : 'All good'}
+          subtitleTone={lowStockCount > 0 ? 'warn' : 'good'}
+          onClick={lowStockCount > 0 ? () => { setStockFilter('low'); setCategoryFilter(''); } : undefined}
         />
-        <StatCard
-          title="Out of Stock"
+        <CompactStat
+          icon={<PackageX size={16} />}
+          tone={outOfStockCount > 0 ? 'red' : 'gray'}
+          title="Out of stock"
           value={String(outOfStockCount)}
-          icon={<PackageX size={18} />}
-          trend={outOfStockCount > 0 ? 'Reorder now' : 'All stocked'}
-          trendUp={outOfStockCount === 0}
-          onClick={() => { setStockFilter('out'); setCategoryFilter(''); }}
+          subtitle={outOfStockCount > 0 ? 'Reorder now' : 'All stocked'}
+          subtitleTone={outOfStockCount > 0 ? 'bad' : 'good'}
+          onClick={outOfStockCount > 0 ? () => { setStockFilter('out'); setCategoryFilter(''); } : undefined}
         />
       </div>
 
-      {/* Filters */}
-      <Card>
-        <div className="space-y-3">
-          <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-            <SearchInput placeholder="Search by name, SKU, barcode, HSN..." value={search} onSearch={setSearch} className="flex-1" />
-            <div className="flex items-center gap-2 shrink-0">
-              <Toggle checked={showCost} onChange={setShowCost} />
-              <span className="text-xs text-gray-500">Show cost & margin</span>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => { setCategoryFilter(''); setStockFilter(''); }}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                !categoryFilter && !stockFilter ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/50' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
-              }`}
-            >
-              All ({items.length})
-            </button>
-            <button
-              onClick={() => { setStockFilter('low'); setCategoryFilter(''); }}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                stockFilter === 'low' ? 'border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/50' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
-              }`}
-            >
-              ⚠ Below reorder ({lowStockCount})
-            </button>
-            <button
-              onClick={() => { setStockFilter('out'); setCategoryFilter(''); }}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                stockFilter === 'out' ? 'border-red-500 bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/50' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
-              }`}
-            >
-              ✗ Out of stock ({outOfStockCount})
-            </button>
-            <div className="h-5 w-px bg-gray-200 dark:bg-gray-700 self-center" />
-            {allCategories.map(cat => (
-              <button
-                key={cat}
-                onClick={() => { setCategoryFilter(cat); setStockFilter(''); }}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                  categoryFilter === cat ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/50' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
+      {/* Single-row filter bar — search + status pills + category dropdown */}
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+        <div className="flex-1 min-w-0">
+          <SearchInput placeholder="Search by name, SKU, barcode, HSN..." value={search} onSearch={setSearch} />
         </div>
-      </Card>
+        <div className="flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-0.5">
+          {[
+            { key: '', label: 'All' },
+            { key: 'low', label: 'Low' },
+            { key: 'out', label: 'Out' },
+          ].map(t => (
+            <button
+              key={t.key}
+              onClick={() => { setStockFilter(t.key as typeof stockFilter); setCategoryFilter(''); }}
+              className={`px-2.5 h-8 rounded text-[11px] font-medium transition-colors ${
+                stockFilter === t.key
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div className="lg:w-52">
+          <SearchableSelect
+            value={categoryFilter}
+            onChange={(v) => { setCategoryFilter(v); setStockFilter(''); }}
+            options={[
+              { label: 'All categories', value: '' },
+              ...allCategories.map(c => ({ label: c, value: c })),
+            ]}
+            placeholder="All categories"
+            clearable={!!categoryFilter}
+          />
+        </div>
+      </div>
 
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 animate-fade-in-up">
@@ -521,22 +564,16 @@ export function ShopInventory() {
                   ),
                 },
               ]}
-              data={pagination.pageData}
+              data={visible}
               keyExtractor={i => i.id}
-              page={pagination.page}
-              totalPages={pagination.totalPages}
-              total={pagination.total}
-              onPageChange={pagination.setPage}
-              sortState={pagination.sortState}
-              onSort={pagination.toggleSort}
-              startIndex={pagination.startIndex}
-              endIndex={pagination.endIndex}
+              sortState={sortState}
+              onSort={toggleSort}
             />
           </div>
 
           {/* Mobile cards */}
           <ul className="space-y-3 sm:hidden">
-            {pagination.pageData.map(i => (
+            {visible.map(i => (
               <li key={i.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 hover-lift transition-transform">
                 <div className="flex items-start justify-between gap-3">
                   <span className="mt-0.5 shrink-0" onClick={e => e.stopPropagation()}>
@@ -570,31 +607,55 @@ export function ShopInventory() {
               </li>
             ))}
           </ul>
+
+          {/* Infinite-scroll sentinel + footer */}
+          <div ref={sentinelRef} className="h-8" />
+          {sorted.length > 0 && (
+            <p className="text-center text-[11px] text-gray-400 mt-1 mb-2 tabular-nums">
+              {visible.length < sorted.length
+                ? `Showing ${visible.length} of ${sorted.length} — scroll for more`
+                : `${sorted.length} item${sorted.length === 1 ? '' : 's'}`}
+            </p>
+          )}
         </div>
       )}
 
       {/* Add / Edit Modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit item' : 'Add item'} size="lg">
-        <div className="space-y-4">
+        <form
+          className="space-y-4"
+          onSubmit={e => {
+            e.preventDefault();
+            handleSave();
+          }}
+        >
           <Input label="Item name *" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Engine Oil 5W-30" />
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <Input label="Cost price (₹)" type="number" value={form.costPrice || ''} onChange={e => setForm({ ...form, costPrice: Number(e.target.value) })} placeholder="0" />
-            <Input label="Sell price (₹) *" type="number" value={form.price || ''} onChange={e => setForm({ ...form, price: Number(e.target.value) })} />
-            <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
-                Margin <JargonHint term="margin" />
-              </label>
-              <div className={`h-10 rounded-lg border px-3 flex items-center text-sm font-semibold tabular-nums ${
-                margin == null ? 'text-gray-400 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800'
-                : margin >= 30 ? 'text-emerald-700 border-emerald-200 bg-emerald-50 dark:text-emerald-400 dark:border-emerald-500/30 dark:bg-emerald-500/10'
-                : margin >= 15 ? 'text-amber-700 border-amber-200 bg-amber-50 dark:text-amber-400 dark:border-amber-500/30 dark:bg-amber-500/10'
-                : 'text-red-700 border-red-200 bg-red-50 dark:text-red-400 dark:border-red-500/30 dark:bg-red-500/10'
-              }`}>
-                {margin == null ? '—' : `${margin.toFixed(1)}%`}
-              </div>
-            </div>
+            <Input label="MRP (₹) *" type="number" value={form.mrp || ''} onChange={e => setForm({ ...form, mrp: Number(e.target.value) })} placeholder="0" />
+            <Input
+              label="Discount (%)"
+              type="number"
+              value={form.discountPercent || ''}
+              onChange={e => {
+                const v = Number(e.target.value);
+                setForm({ ...form, discountPercent: Math.max(0, Math.min(100, isNaN(v) ? 0 : v)) });
+              }}
+              placeholder="0"
+            />
           </div>
+          {(form.mrp ?? 0) > 0 && (form.discountPercent ?? 0) > 0 && (
+            <div className="-mt-2 text-xs text-gray-500">
+              Sells at{' '}
+              <span className="font-semibold tabular-nums text-gray-900 dark:text-white">
+                {formatCurrency(computeSellPrice(form.mrp, form.discountPercent))}
+              </span>
+              <span className="ml-1.5 text-emerald-600 dark:text-emerald-400">
+                ({form.discountPercent}% off MRP)
+              </span>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <Input label="Stock *" type="number" value={form.stock || ''} onChange={e => setForm({ ...form, stock: Number(e.target.value) })} />
@@ -606,18 +667,29 @@ export function ShopInventory() {
               <div className="flex-1">
                 <Dropdown label="Category *" options={categoryFormOptions} value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} />
               </div>
-              <Button variant="secondary" size="sm" icon={<Plus size={14} />} onClick={() => setAddingCategory(true)} className="shrink-0 mb-px">
+              <Button variant="secondary" size="sm" type="button" icon={<Plus size={14} />} onClick={() => setAddingCategory(true)} className="shrink-0 mb-px">
                 New
               </Button>
             </div>
             {addingCategory && (
               <div className="mt-2 flex items-end gap-2 p-3 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
                 <div className="flex-1">
-                  <Input label="New category" value={newCategory} onChange={e => setNewCategory(e.target.value)} placeholder="e.g. Suspension" />
+                  <Input
+                    label="New category"
+                    value={newCategory}
+                    onChange={e => setNewCategory(e.target.value)}
+                    placeholder="e.g. Suspension"
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddCategory();
+                      }
+                    }}
+                  />
                 </div>
                 <div className="flex gap-1 shrink-0 mb-px">
-                  <Button variant="primary" size="sm" onClick={handleAddCategory}>Add</Button>
-                  <Button variant="ghost" size="sm" onClick={() => { setAddingCategory(false); setNewCategory(''); }}>Cancel</Button>
+                  <Button variant="primary" size="sm" type="button" onClick={handleAddCategory}>Add</Button>
+                  <Button variant="ghost" size="sm" type="button" onClick={() => { setAddingCategory(false); setNewCategory(''); }}>Cancel</Button>
                 </div>
               </div>
             )}
@@ -666,10 +738,10 @@ export function ShopInventory() {
           )}
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={handleSave}>{editing ? 'Save changes' : 'Add item'}</Button>
+            <Button variant="secondary" type="button" onClick={() => setModalOpen(false)}>Cancel</Button>
+            <Button variant="primary" type="submit">{editing ? 'Save changes' : 'Add item'}</Button>
           </div>
-        </div>
+        </form>
       </Modal>
 
       {/* Bulk import modal */}
@@ -855,7 +927,13 @@ function BulkImportModal({ open, onClose, onImport }: BulkImportModalProps) {
 
   return (
     <Modal open={open} onClose={onClose} title="Bulk import inventory" size="lg">
-      <div className="space-y-4">
+      <form
+        className="space-y-4"
+        onSubmit={e => {
+          e.preventDefault();
+          handleImport();
+        }}
+      >
         {!parsed && !headerError && (
           <>
             <div className="text-sm text-gray-600 dark:text-gray-400">
@@ -911,7 +989,7 @@ function BulkImportModal({ open, onClose, onImport }: BulkImportModalProps) {
               </div>
             </div>
             <div className="mt-3">
-              <Button variant="secondary" size="sm" onClick={reset}>Try another file</Button>
+              <Button variant="secondary" size="sm" type="button" onClick={reset}>Try another file</Button>
             </div>
           </div>
         )}
@@ -937,7 +1015,7 @@ function BulkImportModal({ open, onClose, onImport }: BulkImportModalProps) {
                   Show errors only
                 </label>
               )}
-              <Button variant="ghost" size="sm" onClick={reset}>Clear</Button>
+              <Button variant="ghost" size="sm" type="button" onClick={reset}>Clear</Button>
             </div>
 
             {unknownHeaders.length > 0 && (
@@ -990,13 +1068,14 @@ function BulkImportModal({ open, onClose, onImport }: BulkImportModalProps) {
             {parsed ? (validRows.length > 0 ? `Importing valid rows only.${errorRows.length > 0 ? ' Error rows will be skipped.' : ''}` : 'No valid rows to import.') : 'Drag-drop or browse to load a CSV file.'}
           </p>
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={onClose}>Cancel</Button>
-            <Button variant="primary" onClick={handleImport} disabled={!parsed || validRows.length === 0}>
+            <Button variant="secondary" type="button" onClick={onClose}>Cancel</Button>
+            <Button variant="primary" type="submit" disabled={!parsed || validRows.length === 0}>
               Import {validRows.length > 0 ? validRows.length : ''} {validRows.length === 1 ? 'item' : 'items'}
             </Button>
           </div>
         </div>
-      </div>
+      </form>
     </Modal>
   );
 }
+

@@ -45,7 +45,11 @@ const TABS = MVP_MODE
 
 export function ShopSettings() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [tab, setTab] = useState<Tab>('profile');
+  const tab = useMemo((): Tab => {
+    const q = searchParams.get('tab') as Tab | null;
+    if (q && TABS.some(t => t.id === q)) return q;
+    return 'profile';
+  }, [searchParams]);
   const { profile, invoice, notif, updateProfile, updateInvoice, updateNotif } = useShopProfile();
   const [profileLocal, setProfileLocal] = useState(profile);
   const [invoiceLocal, setInvoiceLocal] = useState(invoice);
@@ -58,16 +62,13 @@ export function ShopSettings() {
   const navigate = useNavigate();
   const canEdit = can('settings', 'edit');
 
+  /** Drop invalid ?tab= values (e.g. hidden in MVP) so URL and UI stay aligned. */
   useEffect(() => {
     const q = searchParams.get('tab');
-    if (q && TABS.some(t => t.id === q)) setTab(q as Tab);
-  }, [searchParams]);
-
-  // If `tab` is not in the visible strip (e.g. MVP hides that tab), snap back
-  // so the page never renders blank.
-  useEffect(() => {
-    if (!TABS.some(t => t.id === tab)) setTab(TABS[0]?.id ?? 'profile');
-  }, [tab]);
+    if (q && !TABS.some(t => t.id === q)) {
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const [walletBalance] = useState(250);
   const [taxConfig, setTaxConfig] = useState({ defaultRate: 18, gstScheme: 'regular' as 'regular' | 'composition' | 'unregistered' });
@@ -115,6 +116,11 @@ export function ShopSettings() {
 
   const handleLogout = () => { logout(); navigate('/auth/login'); };
 
+  const tabStripItems = useMemo(
+    () => TABS.map(({ id, label, icon: Icon }) => ({ id, label, icon: <Icon size={14} /> })),
+    [],
+  );
+
   const handleLogoUpload = (file: File | null) => {
     if (!file) return;
     const reader = new FileReader();
@@ -139,11 +145,10 @@ export function ShopSettings() {
       {/* Tabs */}
       <div className="sticky top-16 z-10 bg-gray-50/80 dark:bg-gray-950/80 backdrop-blur-sm py-1">
         <Tabs
-          tabs={TABS.map(({ id, label, icon: Icon }) => ({ id, label, icon: <Icon size={14} /> }))}
+          tabs={tabStripItems}
           activeTab={tab}
           onChange={(id) => {
             const next = id as Tab;
-            setTab(next);
             if (next === 'profile') setSearchParams({}, { replace: true });
             else setSearchParams({ tab: next }, { replace: true });
           }}

@@ -291,7 +291,13 @@ export function ShopStaff() {
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit staff' : 'Add staff'}>
-        <div className="space-y-4">
+        <form
+          className="space-y-4"
+          onSubmit={e => {
+            e.preventDefault();
+            handleSave();
+          }}
+        >
           <Input label="Full name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Rahul Mehta" />
           <Input label="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="e.g. rahul@shop.in" />
           <Input label="Phone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="10-digit mobile number" inputMode="tel" />
@@ -301,24 +307,30 @@ export function ShopStaff() {
             <Toggle checked={form.active} onChange={v => setForm({ ...form, active: v })} />
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={handleSave}>{editing ? 'Save changes' : 'Add staff'}</Button>
+            <Button variant="secondary" type="button" onClick={() => setModalOpen(false)}>Cancel</Button>
+            <Button variant="primary" type="submit">{editing ? 'Save changes' : 'Add staff'}</Button>
           </div>
-        </div>
+        </form>
       </Modal>
 
       <Modal open={inviteOpen} onClose={() => setInviteOpen(false)} title="Invite staff member">
-        <div className="space-y-4">
+        <form
+          className="space-y-4"
+          onSubmit={e => {
+            e.preventDefault();
+            handleInvite();
+          }}
+        >
           <p className="text-sm text-gray-500">Send an invite link. They can join using this link to create their staff account.</p>
           <Input label="Name" value={inviteForm.name} onChange={e => setInviteForm({ ...inviteForm, name: e.target.value })} placeholder="e.g. Arjun Verma" />
           <Input label="Email" value={inviteForm.email} onChange={e => setInviteForm({ ...inviteForm, email: e.target.value })} placeholder="e.g. arjun@email.com" />
           <Input label="Phone (optional)" value={inviteForm.phone} onChange={e => setInviteForm({ ...inviteForm, phone: e.target.value })} placeholder="10-digit mobile" inputMode="tel" />
           <Dropdown label="Assign role" options={roleFormOptions} value={inviteForm.roleId} onChange={e => setInviteForm({ ...inviteForm, roleId: e.target.value })} />
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={() => setInviteOpen(false)}>Cancel</Button>
-            <Button variant="primary" icon={<Link2 size={14} />} onClick={handleInvite}>Generate invite link</Button>
+            <Button variant="secondary" type="button" onClick={() => setInviteOpen(false)}>Cancel</Button>
+            <Button variant="primary" type="submit" icon={<Link2 size={14} />}>Generate invite link</Button>
           </div>
-        </div>
+        </form>
       </Modal>
     </div>
   );
