@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Receipt, Clock, AlertTriangle, ArrowRight, ArrowUpRight, ArrowDownRight, PackageX,
-  Share2, CheckCircle2, Phone, ShoppingCart, Package, Users,
+  Share2, CheckCircle2, Phone, ShoppingCart, Users,
   TrendingUp, TrendingDown, Banknote, Smartphone, CreditCard as CardIcon,
   Activity, RefreshCw, Check, X as XIcon, Sparkles, ChevronRight,
 } from 'lucide-react';

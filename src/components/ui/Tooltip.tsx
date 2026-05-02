@@ -23,7 +23,7 @@ const arrowClasses = {
 
 export function Tooltip({ content, children, position = 'top', delay = 200 }: TooltipProps) {
   const [visible, setVisible] = useState(false);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const show = () => {
     timeoutRef.current = setTimeout(() => setVisible(true), delay);
@@ -34,7 +34,7 @@ export function Tooltip({ content, children, position = 'top', delay = 200 }: To
     setVisible(false);
   };
 
-  useEffect(() => () => clearTimeout(timeoutRef.current), []);
+  useEffect(() => () => { if (timeoutRef.current !== undefined) clearTimeout(timeoutRef.current); }, []);
 
   return (
     <span className="relative inline-flex" onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}>

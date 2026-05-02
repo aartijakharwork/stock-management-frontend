@@ -7,7 +7,7 @@ type Rule<T> = {
 
 type Rules<T> = Partial<Record<keyof T, Rule<T>[]>>;
 
-export function useFormValidation<T extends Record<string, unknown>>(initialValues: T, rules: Rules<T>) {
+export function useFormValidation<T extends Record<string, unknown>>(_initialValues: T, rules: Rules<T>) {
   const [errors, setErrors] = useState<Partial<Record<keyof T, string>>>({});
   const [touched, setTouched] = useState<Partial<Record<keyof T, boolean>>>({});
 

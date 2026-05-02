@@ -105,8 +105,6 @@ export function ShopBilling() {
     });
   }, [search, category, inventoryItems]);
 
-  const isUdhaar = mode === 'sale' && (paymentMethod as string) === 'udhaar' && !splitMode;
-
   const addToCart = (item: InventoryItem) => {
     if (item.stock === 0 && mode === 'sale') return;
     let added = true;
@@ -335,8 +333,8 @@ export function ShopBilling() {
     []
   );
 
-  const handlePaymentMethodChange = (m: PaymentMethod) => {
-    setPaymentMethod(m);
+  const handlePaymentMethodChange = (m: TenderMethod) => {
+    if (m !== 'udhaar') setPaymentMethod(m);
     if (m === 'udhaar' && !hasCustomerInfo) setCustomerOpen(true);
   };
 
@@ -889,7 +887,7 @@ interface CartPaneProps {
   onAttachCustomer: (c: { id?: string; name: string; phone: string }) => void;
   onDetachCustomer: () => void;
   paymentMethod: PaymentMethod;
-  onPaymentMethodChange: (v: PaymentMethod) => void;
+  onPaymentMethodChange: (v: TenderMethod) => void;
   discount: number;
   discountType: 'flat' | 'percent';
   onDiscountChange: (v: number) => void;
@@ -1141,7 +1139,7 @@ function CartPane({
                   <button
                     key={value}
                     type="button"
-                    onClick={() => onPaymentMethodChange(value as PaymentMethod)}
+                    onClick={() => onPaymentMethodChange(value)}
                     className={`flex flex-col items-center gap-0.5 py-1.5 rounded-lg border text-[10px] font-medium transition-colors ${
                       paymentMethod === value
                         ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/50'

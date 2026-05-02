@@ -9,7 +9,7 @@ import { roles as initialRoles, staffMembers } from '../../data/shop-dummy';
 import { generateId } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { usePermissions } from '../../context/PermissionContext';
-import type { Role, RolePermissions, AppModule, ModuleAction, DEFAULT_MODULE_PERMISSIONS } from '../../types';
+import type { Role, RolePermissions, AppModule, ModuleAction } from '../../types';
 
 const MODULE_META: { key: AppModule; label: string }[] = [
   { key: 'dashboard', label: 'Dashboard' },
@@ -32,7 +32,7 @@ const ACTION_LABELS: { key: ModuleAction; label: string }[] = [
 
 const emptyPermissions: RolePermissions = Object.fromEntries(
   MODULE_META.map(m => [m.key, { view: false, add: false, edit: false, delete: false }])
-) as RolePermissions;
+) as unknown as RolePermissions;
 
 function PermissionToggle({ checked, onChange, disabled }: { checked: boolean; onChange: () => void; disabled?: boolean }) {
   return (
@@ -75,7 +75,7 @@ export function ShopRoles() {
     if (!canEdit) return;
     setRolesList(prev => prev.map(r => {
       if (r.id !== roleId) return r;
-      const modPerms = { ...r.permissions[module] };
+      const modPerms = { ...(r.permissions[module] ?? { view: false, add: false, edit: false, delete: false }) };
       modPerms[action] = !modPerms[action];
       if (!modPerms.view && (modPerms.add || modPerms.edit || modPerms.delete)) {
         modPerms.view = true;
@@ -88,7 +88,7 @@ export function ShopRoles() {
     if (!canEdit) return;
     setRolesList(prev => prev.map(r => {
       if (r.id !== roleId) return r;
-      const allEnabled = ACTION_LABELS.every(a => r.permissions[module][a.key]);
+      const allEnabled = ACTION_LABELS.every(a => r.permissions[module]?.[a.key]);
       const newPerms = allEnabled
         ? { view: false, add: false, edit: false, delete: false }
         : { view: true, add: true, edit: true, delete: true };
@@ -150,7 +150,7 @@ export function ShopRoles() {
                     <Badge variant="neutral">{count} {count === 1 ? 'member' : 'members'}</Badge>
                   </div>
                   <p className="text-xs text-gray-500">
-                    {MODULE_META.filter(m => role.permissions[m.key].view).map(m => m.label).join(', ') || 'No permissions'}
+                    {MODULE_META.filter(m => role.permissions[m.key]?.view).map(m => m.label).join(', ') || 'No permissions'}
                   </p>
                 </div>
                 <svg className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -176,7 +176,7 @@ export function ShopRoles() {
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
                           {MODULE_META.map(mod => {
-                            const allEnabled = ACTION_LABELS.every(a => role.permissions[mod.key][a.key]);
+                            const allEnabled = ACTION_LABELS.every(a => role.permissions[mod.key]?.[a.key]);
                             return (
                               <tr key={mod.key} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                                 <td className="px-4 py-2.5">
@@ -186,7 +186,7 @@ export function ShopRoles() {
                                   <td key={a.key} className="px-3 py-2.5 text-center">
                                     <div className="flex justify-center">
                                       <PermissionToggle
-                                        checked={role.permissions[mod.key][a.key]}
+                                        checked={role.permissions[mod.key]?.[a.key] ?? false}
                                         onChange={() => togglePermission(role.id, mod.key, a.key)}
                                         disabled={!canEdit}
                                       />

@@ -35,7 +35,8 @@ export function Staff() {
     if (editing) {
       setStaff(prev => prev.map(s => s.id === editing.id ? { ...s, ...form } : s));
     } else {
-      setStaff(prev => [...prev, { id: generateId(), ...form }]);
+      const matchedRole = roles.find(r => r.name === form.role);
+      setStaff(prev => [...prev, { id: generateId(), roleId: matchedRole?.id ?? '', ...form }]);
     }
     setModalOpen(false);
   };

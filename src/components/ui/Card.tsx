@@ -5,9 +5,13 @@ interface CardProps {
   className?: string;
   padding?: boolean;
   onClick?: () => void;
+  /** When true, card fades/slides in on mount. */
+  animate?: boolean;
+  /** Delay in ms for staggered animations. */
+  animationDelay?: number;
 }
 
-export function Card({ children, className = '', padding = true, onClick }: CardProps) {
+export function Card({ children, className = '', padding = true, onClick, animate: _animate, animationDelay: _animationDelay }: CardProps) {
   return (
     <div
       onClick={onClick}
@@ -26,9 +30,11 @@ interface StatCardProps {
   trendUp?: boolean;
   delay?: number;
   onClick?: () => void;
+  /** Optional CSS classes for the icon container background/color. */
+  iconBg?: string;
 }
 
-export function StatCard({ title, value, icon, trend, trendUp, onClick }: StatCardProps) {
+export function StatCard({ title, value, icon, trend, trendUp, onClick, iconBg }: StatCardProps) {
   return (
     <div
       onClick={onClick}
@@ -44,7 +50,7 @@ export function StatCard({ title, value, icon, trend, trendUp, onClick }: StatCa
             </p>
           )}
         </div>
-        <div className="w-10 h-10 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-400 shrink-0">
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${iconBg ?? 'bg-emerald-50 border border-emerald-100 text-emerald-600 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-400'}`}>
           {icon}
         </div>
       </div>
