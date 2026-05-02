@@ -688,7 +688,13 @@ export function ShopCustomers() {
 
       {/* Security Code Modal */}
       <Modal open={securityOpen} onClose={() => { setSecurityOpen(false); setSettleTarget(null); }} title="Confirm Payment" size="sm">
-        <div className="space-y-4">
+        <form
+          className="space-y-4"
+          onSubmit={e => {
+            e.preventDefault();
+            confirmSettle();
+          }}
+        >
           <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20">
             <ShieldCheck size={20} className="text-amber-600 dark:text-amber-400 shrink-0" />
             <div>
@@ -712,10 +718,10 @@ export function ShopCustomers() {
             error={securityError}
           />
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={() => { setSecurityOpen(false); setSettleTarget(null); }}>Cancel</Button>
-            <Button variant="primary" onClick={confirmSettle}>Confirm & settle</Button>
+            <Button variant="secondary" type="button" onClick={() => { setSecurityOpen(false); setSettleTarget(null); }}>Cancel</Button>
+            <Button variant="primary" type="submit">Confirm & settle</Button>
           </div>
-        </div>
+        </form>
       </Modal>
     </div>
   );
@@ -732,7 +738,13 @@ interface CustomerFormProps {
 
 function CustomerForm({ form, formError, setForm, onCancel, onSave, saveLabel }: CustomerFormProps) {
   return (
-    <div className="space-y-4">
+    <form
+      className="space-y-4"
+      onSubmit={e => {
+        e.preventDefault();
+        onSave();
+      }}
+    >
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input label="Name *" placeholder="e.g. Ramesh Kumar" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} error={formError.name} />
         <Input label="Phone *" placeholder="10-digit mobile number" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} error={formError.phone} />
@@ -744,9 +756,9 @@ function CustomerForm({ form, formError, setForm, onCancel, onSave, saveLabel }:
         <Input label="Pin code" value={form.pincode} onChange={e => setForm(f => ({ ...f, pincode: e.target.value }))} placeholder="6-digit" />
       </div>
       <div className="flex justify-end gap-2 pt-2">
-        <Button variant="secondary" onClick={onCancel}>Cancel</Button>
-        <Button variant="primary" onClick={onSave}>{saveLabel}</Button>
+        <Button variant="secondary" type="button" onClick={onCancel}>Cancel</Button>
+        <Button variant="primary" type="submit">{saveLabel}</Button>
       </div>
-    </div>
+    </form>
   );
 }

@@ -393,7 +393,13 @@ export function ShopCustomerLedger() {
 
       {/* Security prompt — required when shopkeeper has set a settle PIN in Settings */}
       <Modal open={securityOpen} onClose={() => { setSecurityOpen(false); setSecurityInput(''); setSecurityError(''); }} title="Confirm payment" size="sm">
-        <div className="space-y-3">
+        <form
+          className="space-y-3"
+          onSubmit={e => {
+            e.preventDefault();
+            confirmSecurityAndPay();
+          }}
+        >
           <p className="text-sm text-gray-600 dark:text-gray-400">
             Enter your security code to record this payment.
           </p>
@@ -410,20 +416,25 @@ export function ShopCustomerLedger() {
             inputMode="numeric"
             value={securityInput}
             onChange={e => { setSecurityInput(e.target.value); setSecurityError(''); }}
-            onKeyDown={e => { if (e.key === 'Enter') confirmSecurityAndPay(); }}
             error={securityError || undefined}
             autoFocus
           />
           <div className="flex justify-end gap-2 pt-1">
-            <Button variant="secondary" onClick={() => { setSecurityOpen(false); setSecurityInput(''); setSecurityError(''); }}>Cancel</Button>
-            <Button variant="primary" onClick={confirmSecurityAndPay}>Confirm</Button>
+            <Button variant="secondary" type="button" onClick={() => { setSecurityOpen(false); setSecurityInput(''); setSecurityError(''); }}>Cancel</Button>
+            <Button variant="primary" type="submit">Confirm</Button>
           </div>
-        </div>
+        </form>
       </Modal>
 
       {/* Payment Modal */}
       <Modal open={paymentOpen} onClose={() => setPaymentOpen(false)} title="Record payment" size="sm">
-        <div className="space-y-4">
+        <form
+          className="space-y-4"
+          onSubmit={e => {
+            e.preventDefault();
+            handleAddPayment();
+          }}
+        >
           <Input label="Amount (₹) *" type="number" value={paymentForm.amount} onChange={e => setPaymentForm({ ...paymentForm, amount: e.target.value })} />
           <Dropdown
             label="Method"
@@ -433,15 +444,21 @@ export function ShopCustomerLedger() {
           />
           <Input label="Note (optional)" value={paymentForm.note} onChange={e => setPaymentForm({ ...paymentForm, note: e.target.value })} placeholder="e.g. Partial settlement" />
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={() => setPaymentOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={handleAddPayment}>Record payment</Button>
+            <Button variant="secondary" type="button" onClick={() => setPaymentOpen(false)}>Cancel</Button>
+            <Button variant="primary" type="submit">Record payment</Button>
           </div>
-        </div>
+        </form>
       </Modal>
 
       {/* Adjustment modal */}
       <Modal open={adjustOpen} onClose={() => setAdjustOpen(false)} title="Add adjustment" size="sm">
-        <div className="space-y-4">
+        <form
+          className="space-y-4"
+          onSubmit={e => {
+            e.preventDefault();
+            handleAddAdjustment();
+          }}
+        >
           <Dropdown
             label="Type"
             options={[
@@ -454,10 +471,10 @@ export function ShopCustomerLedger() {
           <Input label="Amount (₹) *" type="number" value={adjustForm.amount} onChange={e => setAdjustForm({ ...adjustForm, amount: e.target.value })} />
           <Input label="Reason / note" value={adjustForm.note} onChange={e => setAdjustForm({ ...adjustForm, note: e.target.value })} placeholder="e.g. Goodwill discount" />
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={() => setAdjustOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={handleAddAdjustment}>Post adjustment</Button>
+            <Button variant="secondary" type="button" onClick={() => setAdjustOpen(false)}>Cancel</Button>
+            <Button variant="primary" type="submit">Post adjustment</Button>
           </div>
-        </div>
+        </form>
       </Modal>
     </div>
   );

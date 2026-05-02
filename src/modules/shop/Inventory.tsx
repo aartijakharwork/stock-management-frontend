@@ -622,7 +622,13 @@ export function ShopInventory() {
 
       {/* Add / Edit Modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit item' : 'Add item'} size="lg">
-        <div className="space-y-4">
+        <form
+          className="space-y-4"
+          onSubmit={e => {
+            e.preventDefault();
+            handleSave();
+          }}
+        >
           <Input label="Item name *" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Engine Oil 5W-30" />
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -661,18 +667,29 @@ export function ShopInventory() {
               <div className="flex-1">
                 <Dropdown label="Category *" options={categoryFormOptions} value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} />
               </div>
-              <Button variant="secondary" size="sm" icon={<Plus size={14} />} onClick={() => setAddingCategory(true)} className="shrink-0 mb-px">
+              <Button variant="secondary" size="sm" type="button" icon={<Plus size={14} />} onClick={() => setAddingCategory(true)} className="shrink-0 mb-px">
                 New
               </Button>
             </div>
             {addingCategory && (
               <div className="mt-2 flex items-end gap-2 p-3 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
                 <div className="flex-1">
-                  <Input label="New category" value={newCategory} onChange={e => setNewCategory(e.target.value)} placeholder="e.g. Suspension" />
+                  <Input
+                    label="New category"
+                    value={newCategory}
+                    onChange={e => setNewCategory(e.target.value)}
+                    placeholder="e.g. Suspension"
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddCategory();
+                      }
+                    }}
+                  />
                 </div>
                 <div className="flex gap-1 shrink-0 mb-px">
-                  <Button variant="primary" size="sm" onClick={handleAddCategory}>Add</Button>
-                  <Button variant="ghost" size="sm" onClick={() => { setAddingCategory(false); setNewCategory(''); }}>Cancel</Button>
+                  <Button variant="primary" size="sm" type="button" onClick={handleAddCategory}>Add</Button>
+                  <Button variant="ghost" size="sm" type="button" onClick={() => { setAddingCategory(false); setNewCategory(''); }}>Cancel</Button>
                 </div>
               </div>
             )}
@@ -721,10 +738,10 @@ export function ShopInventory() {
           )}
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={handleSave}>{editing ? 'Save changes' : 'Add item'}</Button>
+            <Button variant="secondary" type="button" onClick={() => setModalOpen(false)}>Cancel</Button>
+            <Button variant="primary" type="submit">{editing ? 'Save changes' : 'Add item'}</Button>
           </div>
-        </div>
+        </form>
       </Modal>
 
       {/* Bulk import modal */}
@@ -910,7 +927,13 @@ function BulkImportModal({ open, onClose, onImport }: BulkImportModalProps) {
 
   return (
     <Modal open={open} onClose={onClose} title="Bulk import inventory" size="lg">
-      <div className="space-y-4">
+      <form
+        className="space-y-4"
+        onSubmit={e => {
+          e.preventDefault();
+          handleImport();
+        }}
+      >
         {!parsed && !headerError && (
           <>
             <div className="text-sm text-gray-600 dark:text-gray-400">
@@ -966,7 +989,7 @@ function BulkImportModal({ open, onClose, onImport }: BulkImportModalProps) {
               </div>
             </div>
             <div className="mt-3">
-              <Button variant="secondary" size="sm" onClick={reset}>Try another file</Button>
+              <Button variant="secondary" size="sm" type="button" onClick={reset}>Try another file</Button>
             </div>
           </div>
         )}
@@ -992,7 +1015,7 @@ function BulkImportModal({ open, onClose, onImport }: BulkImportModalProps) {
                   Show errors only
                 </label>
               )}
-              <Button variant="ghost" size="sm" onClick={reset}>Clear</Button>
+              <Button variant="ghost" size="sm" type="button" onClick={reset}>Clear</Button>
             </div>
 
             {unknownHeaders.length > 0 && (
@@ -1045,13 +1068,13 @@ function BulkImportModal({ open, onClose, onImport }: BulkImportModalProps) {
             {parsed ? (validRows.length > 0 ? `Importing valid rows only.${errorRows.length > 0 ? ' Error rows will be skipped.' : ''}` : 'No valid rows to import.') : 'Drag-drop or browse to load a CSV file.'}
           </p>
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={onClose}>Cancel</Button>
-            <Button variant="primary" onClick={handleImport} disabled={!parsed || validRows.length === 0}>
+            <Button variant="secondary" type="button" onClick={onClose}>Cancel</Button>
+            <Button variant="primary" type="submit" disabled={!parsed || validRows.length === 0}>
               Import {validRows.length > 0 ? validRows.length : ''} {validRows.length === 1 ? 'item' : 'items'}
             </Button>
           </div>
         </div>
-      </div>
+      </form>
     </Modal>
   );
 }

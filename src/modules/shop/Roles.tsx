@@ -226,26 +226,38 @@ export function ShopRoles() {
       </div>
 
       <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add role">
-        <div className="space-y-4">
+        <form
+          className="space-y-4"
+          onSubmit={e => {
+            e.preventDefault();
+            handleAdd();
+          }}
+        >
           <Input label="Role name" value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Supervisor" />
           <p className="text-xs text-gray-500">You can set permissions after creating.</p>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={handleAdd}>Create role</Button>
+            <Button variant="secondary" type="button" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button variant="primary" type="submit">Create role</Button>
           </div>
-        </div>
+        </form>
       </Modal>
 
       <Modal open={confirmDelete !== null} onClose={() => setConfirmDelete(null)} title="Delete role?" size="sm">
-        <div className="space-y-4">
+        <form
+          className="space-y-4"
+          onSubmit={e => {
+            e.preventDefault();
+            handleDelete();
+          }}
+        >
           <p className="text-sm text-gray-600 dark:text-gray-400">
             This will permanently remove {confirmDelete && <span className="font-medium text-gray-900 dark:text-white">"{confirmDelete.name}"</span>}. Staff with this role will lose its permissions.
           </p>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={() => setConfirmDelete(null)}>Cancel</Button>
-            <Button variant="danger" onClick={handleDelete}>Delete role</Button>
+            <Button variant="secondary" type="button" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+            <Button variant="danger" type="submit">Delete role</Button>
           </div>
-        </div>
+        </form>
       </Modal>
     </div>
   );

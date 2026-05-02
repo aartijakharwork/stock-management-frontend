@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, type KeyboardEvent } from 'react';
 import {
   Package, PackageX, Plus, Minus, Trash2, Printer, Receipt, ShoppingCart, X,
   Banknote, Smartphone, CreditCard as CardIcon, Tag, MessageSquare,
@@ -579,7 +579,7 @@ export function ShopBilling() {
         </section>
 
         {/* RIGHT — full-height cart */}
-        <aside className="hidden lg:block lg:min-h-0 lg:h-full">
+        <aside className="hidden lg:flex lg:flex-col lg:min-h-0 lg:h-full">
           <CartPane {...cartProps} />
         </aside>
       </div>
@@ -617,7 +617,13 @@ export function ShopBilling() {
 
       {/* Confirm-before-print modal */}
       <Modal open={confirmOpen} onClose={() => setConfirmOpen(false)} title={mode === 'return' ? 'Confirm return' : 'Confirm bill'} size="sm">
-        <div className="space-y-3">
+        <form
+          className="space-y-3"
+          onSubmit={e => {
+            e.preventDefault();
+            finalizeBill();
+          }}
+        >
           <p className="text-sm text-gray-700 dark:text-gray-300">
             {mode === 'return' ? 'A credit note will be created and stock reversed.' : 'Charge and print this bill?'}
           </p>
@@ -634,10 +640,10 @@ export function ShopBilling() {
             <div className="flex justify-between text-sm"><span className="text-gray-500">Payment</span><span className="font-medium uppercase">{splitMode ? 'Split' : paymentMethod}</span></div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={() => setConfirmOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={finalizeBill}>Confirm & {mode === 'return' ? 'Refund' : 'Print'}</Button>
+            <Button variant="secondary" type="button" onClick={() => setConfirmOpen(false)}>Cancel</Button>
+            <Button variant="primary" type="submit">Confirm & {mode === 'return' ? 'Refund' : 'Print'}</Button>
           </div>
-        </div>
+        </form>
       </Modal>
 
       {/* Held bills modal */}
@@ -668,7 +674,13 @@ export function ShopBilling() {
 
       {/* Numpad modal */}
       <Modal open={!!numpadItem} onClose={() => setNumpadItem(null)} title="Enter quantity" size="sm">
-        <div className="flex flex-col items-center gap-3">
+        <form
+          className="flex flex-col items-center gap-3"
+          onSubmit={e => {
+            e.preventDefault();
+            confirmNumpad();
+          }}
+        >
           <div className="w-full h-14 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center text-3xl font-bold tabular-nums text-gray-900 dark:text-white">
             {numpadValue || '0'}
           </div>
@@ -680,8 +692,8 @@ export function ShopBilling() {
             <button type="button" onClick={() => setNumpadValue(v => v === '0' ? '0' : v + '0')} className="h-12 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-lg font-semibold text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 active:scale-95 transition-transform">0</button>
             <button type="button" onClick={() => setNumpadValue(v => v.slice(0, -1))} className="h-12 rounded-xl bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 active:scale-95 transition-transform">&#9003;</button>
           </div>
-          <Button variant="primary" className="w-full max-w-[220px]" onClick={confirmNumpad}>Set quantity</Button>
-        </div>
+          <Button variant="primary" type="submit" className="w-full max-w-[220px]">Set quantity</Button>
+        </form>
       </Modal>
 
       {/* Barcode scanner modal */}
@@ -950,8 +962,8 @@ function CartPane({
   };
 
   return (
-    <Card padding={false} className="flex flex-col h-full max-h-[calc(100vh-120px)] lg:max-h-none overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between gap-2">
+    <Card padding={false} className="flex h-full min-h-0 max-h-[calc(100vh-120px)] flex-col overflow-hidden sm:max-h-none lg:h-full lg:max-h-none">
+      <div className="shrink-0 px-4 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[10px] font-semibold tracking-wider uppercase text-gray-500">{mode === 'return' ? 'Credit note' : 'Current Bill'}</p>
           <p className="font-mono text-[11px] text-gray-700 dark:text-gray-300 truncate">{draftInvoice}</p>
@@ -962,7 +974,7 @@ function CartPane({
         </div>
       </div>
 
-      <div className="px-4 py-2.5 border-b border-gray-200 dark:border-gray-800">
+      <div className="shrink-0 px-4 py-2.5 border-b border-gray-200 dark:border-gray-800">
         <CustomerBlock
           attached={attachedCustomer}
           name={customerName}
@@ -978,9 +990,9 @@ function CartPane({
         />
       </div>
 
-      <div className="flex-1 overflow-y-auto min-h-[160px]">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
         {isEmpty ? (
-          <div className="h-full flex flex-col items-center justify-center px-6 py-10 text-center">
+          <div className="flex min-h-[160px] flex-col items-center justify-center px-6 py-10 text-center">
             <div className="w-11 h-11 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-400 flex items-center justify-center mb-2">
               <ShoppingCart size={20} />
             </div>
@@ -988,6 +1000,7 @@ function CartPane({
             <p className="text-xs text-gray-500 mt-0.5">Tap an item on the left to start a bill.</p>
           </div>
         ) : (
+          <>
           <ul className="divide-y divide-gray-200 dark:divide-gray-800">
             {cart.map(item => (
               <li key={item.id} className="px-4 py-2.5">
@@ -1031,10 +1044,7 @@ function CartPane({
               </li>
             ))}
           </ul>
-        )}
-      </div>
 
-      {!isEmpty && (
         <div className="border-t border-gray-200 dark:border-gray-800">
           <div className="px-4 py-2 flex flex-wrap items-center gap-2">
             {!discountOpen && billDiscountAmount === 0 ? (
@@ -1145,19 +1155,22 @@ function CartPane({
               </div>
             </div>
           )}
+        </div>
+          </>
+        )}
+      </div>
 
-          {/* Sticky CTA */}
-          <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/40">
-            <div className="flex items-end justify-between mb-2">
-              <span className="text-[11px] text-gray-500">{mode === 'return' ? 'Refund amount' : isUdhaar ? 'Udhaar amount' : 'Total payable'}</span>
-              <span className="text-2xl font-bold tabular-nums leading-none">{formatCurrency(total)}</span>
-            </div>
-            <div className="grid grid-cols-[1fr_auto] gap-2">
-              <Button variant="primary" size="lg" onClick={onGenerate} icon={mode === 'return' ? <RotateCcw size={16} /> : isUdhaar ? <Clock size={16} /> : <Receipt size={16} />} className="w-full">
-                {mode === 'return' ? 'Process Refund' : isUdhaar ? 'Save Udhaar' : 'Charge & Print'}
-              </Button>
-              <Button variant="secondary" size="lg" onClick={onHold} icon={<UserIcon size={14} />}>Hold</Button>
-            </div>
+      {!isEmpty && (
+        <div className="shrink-0 px-4 py-3 border-t border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/40">
+          <div className="flex items-end justify-between mb-2">
+            <span className="text-[11px] text-gray-500">{mode === 'return' ? 'Refund amount' : isUdhaar ? 'Udhaar amount' : 'Total payable'}</span>
+            <span className="text-2xl font-bold tabular-nums leading-none">{formatCurrency(total)}</span>
+          </div>
+          <div className="grid grid-cols-[1fr_auto] gap-2">
+            <Button variant="primary" size="lg" onClick={onGenerate} icon={mode === 'return' ? <RotateCcw size={16} /> : isUdhaar ? <Clock size={16} /> : <Receipt size={16} />} className="w-full">
+              {mode === 'return' ? 'Process Refund' : isUdhaar ? 'Save Udhaar' : 'Charge & Print'}
+            </Button>
+            <Button variant="secondary" size="lg" onClick={onHold} icon={<UserIcon size={14} />}>Hold</Button>
           </div>
         </div>
       )}
@@ -1186,15 +1199,48 @@ function CustomerBlock({
   const typedName = name.trim();
   const typedPhone = phone.trim();
   const hasTyped = !!typedName || !!typedPhone;
+  const [highlightIdx, setHighlightIdx] = useState(0);
 
-  // Suggestions: filter by typed name or phone substring; otherwise show top 3 recent
-  const matches = (() => {
-    const q = (typedName || typedPhone).toLowerCase();
-    if (!q) return suggestions.slice(0, 3);
-    return suggestions.filter(c =>
-      c.name.toLowerCase().includes(q) || c.phone.toLowerCase().includes(q)
-    ).slice(0, 5);
-  })();
+  const matches = useMemo(() => {
+    const q = (typedName || typedPhone).trim().toLowerCase();
+    if (!q) return [];
+    const qDigits = q.replace(/\D/g, '');
+    return suggestions
+      .filter(c => {
+        if (c.name.toLowerCase().includes(q)) return true;
+        if (!c.phone) return false;
+        const p = c.phone.replace(/\D/g, '');
+        return p.includes(qDigits) && qDigits.length > 0;
+      })
+      .slice(0, 8);
+  }, [suggestions, typedName, typedPhone]);
+
+  useEffect(() => {
+    setHighlightIdx(0);
+  }, [typedName, typedPhone]);
+
+  const rowActive = matches.length ? Math.min(highlightIdx, matches.length - 1) : 0;
+
+  const pickSuggestion = (c: (typeof suggestions)[number]) => {
+    onAttach({ id: c.id, name: c.name, phone: c.phone });
+  };
+
+  const onNameKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (!matches.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightIdx(i => Math.min(i + 1, matches.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightIdx(i => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter') {
+      const row = matches[rowActive];
+      if (row) {
+        e.preventDefault();
+        pickSuggestion(row);
+      }
+    }
+  };
 
   // Attached customer view — compact card with udhaar warning + change link
   if (attached) {
@@ -1266,34 +1312,73 @@ function CustomerBlock({
     );
   }
 
-  // Expanded panel — name + phone + suggestions
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <p className="text-[10px] font-semibold tracking-wider uppercase text-gray-500">Customer</p>
         <button
+          type="button"
           onClick={() => { onNameChange(''); onPhoneChange(''); onOpenChange(false); }}
           className="text-[10px] text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
         >
           Skip
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-1.5">
+
+      <div className="relative">
+        <label htmlFor="pos-customer-name" className="sr-only">Customer name</label>
         <input
+          id="pos-customer-name"
           type="text"
+          autoComplete="off"
+          autoFocus
           value={name}
           onChange={e => onNameChange(e.target.value)}
-          placeholder="Name"
-          autoFocus
-          className="h-9 text-[13px] rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2.5 text-gray-900 dark:text-white"
+          onKeyDown={onNameKeyDown}
+          placeholder="Search existing or type a new name…"
+          className="w-full h-9 text-[13px] rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2.5 text-gray-900 dark:text-white"
         />
+        {matches.length > 0 && (
+          <ul
+            className="absolute z-30 mt-1 w-full max-h-40 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg py-0.5"
+            role="listbox"
+          >
+            {matches.map((c, idx) => (
+              <li key={c.id} role="option" aria-selected={idx === rowActive}>
+                <button
+                  type="button"
+                  onMouseEnter={() => setHighlightIdx(idx)}
+                  onClick={() => pickSuggestion(c)}
+                  className={`w-full flex items-center gap-2 px-2.5 py-2 text-left ${
+                    idx === rowActive ? 'bg-emerald-50 dark:bg-emerald-500/15' : 'hover:bg-gray-50 dark:hover:bg-gray-800/80'
+                  }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[12px] font-medium text-gray-900 dark:text-white truncate">{c.name}</p>
+                    {c.phone && <p className="text-[10px] text-gray-500 tabular-nums">{c.phone}</p>}
+                  </div>
+                  {c.pendingAmount > 0 && (
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium tabular-nums shrink-0">
+                      Udhaar {formatCurrency(c.pendingAmount)}
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div>
+        <label htmlFor="pos-customer-phone" className="sr-only">Phone</label>
         <input
+          id="pos-customer-phone"
           type="tel"
           inputMode="tel"
           value={phone}
           onChange={e => onPhoneChange(e.target.value.replace(/[^0-9+\- ]/g, ''))}
-          placeholder="Phone"
-          className="h-9 text-[13px] rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2.5 text-gray-900 dark:text-white tabular-nums"
+          placeholder="Phone (add for new customers)"
+          className="w-full h-9 text-[13px] rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2.5 text-gray-900 dark:text-white tabular-nums"
         />
       </div>
 
@@ -1303,41 +1388,22 @@ function CustomerBlock({
         </p>
       )}
 
-      {matches.length > 0 && (
-        <div>
-          <p className="text-[10px] text-gray-500 mb-1">{hasTyped ? 'Matches' : 'Recent'}</p>
-          <ul className="space-y-1">
-            {matches.map(c => (
-              <li key={c.id}>
-                <button
-                  type="button"
-                  onClick={() => onAttach({ id: c.id, name: c.name, phone: c.phone })}
-                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-emerald-50 dark:hover:bg-emerald-500/10 text-left"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[12px] font-medium text-gray-900 dark:text-white truncate">{c.name}</p>
-                    {c.phone && <p className="text-[10px] text-gray-500 tabular-nums">{c.phone}</p>}
-                  </div>
-                  {c.pendingAmount > 0 && (
-                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium tabular-nums">
-                      Udhaar {formatCurrency(c.pendingAmount)}
-                    </span>
-                  )}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
+      {(typedName || typedPhone) && matches.length === 0 && (
+        <p className="text-[10px] text-gray-500 dark:text-gray-400">
+          No saved match — continue with this name to create a new customer on billing.
+        </p>
       )}
 
       <div className="flex items-center justify-end gap-2 pt-1">
         <button
+          type="button"
           onClick={() => onOpenChange(false)}
           className="text-[11px] px-3 py-1.5 rounded-md text-gray-500 hover:text-gray-900 dark:hover:text-white"
         >
           Cancel
         </button>
         <button
+          type="button"
           onClick={() => {
             if (!hasTyped) { onOpenChange(false); return; }
             onAttach({ name: typedName, phone: typedPhone });

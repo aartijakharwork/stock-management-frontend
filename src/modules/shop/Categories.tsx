@@ -152,7 +152,13 @@ export function SettingsCategoriesPanel() {
       </Card>
 
       <Modal open={addOpen} onClose={() => setAddOpen(false)} title="New category">
-        <div className="space-y-4">
+        <form
+          className="space-y-4"
+          onSubmit={e => {
+            e.preventDefault();
+            handleAdd();
+          }}
+        >
           <Input
             label="Name"
             value={newName}
@@ -161,16 +167,22 @@ export function SettingsCategoriesPanel() {
             autoFocus
           />
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={handleAdd} disabled={!newName.trim()}>
+            <Button variant="secondary" type="button" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button variant="primary" type="submit" disabled={!newName.trim()}>
               Save
             </Button>
           </div>
-        </div>
+        </form>
       </Modal>
 
       <Modal open={!!editingId} onClose={() => setEditingId(null)} title="Rename category">
-        <div className="space-y-4">
+        <form
+          className="space-y-4"
+          onSubmit={e => {
+            e.preventDefault();
+            handleRename();
+          }}
+        >
           <Input
             label="New name"
             value={editName}
@@ -178,12 +190,12 @@ export function SettingsCategoriesPanel() {
             autoFocus
           />
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setEditingId(null)}>Cancel</Button>
-            <Button variant="primary" onClick={handleRename} disabled={!editName.trim()}>
+            <Button variant="secondary" type="button" onClick={() => setEditingId(null)}>Cancel</Button>
+            <Button variant="primary" type="submit" disabled={!editName.trim()}>
               Save
             </Button>
           </div>
-        </div>
+        </form>
       </Modal>
     </div>
   );

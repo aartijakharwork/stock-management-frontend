@@ -527,7 +527,13 @@ export function ShopBillsHistory() {
 
       {/* Security prompt — required when shopkeeper has set a settle PIN in Settings */}
       <Modal open={securityOpen} onClose={() => { setSecurityOpen(false); setSecurityTarget(null); setSecurityInput(''); setSecurityError(''); }} title="Confirm payment" size="sm">
-        <div className="space-y-3">
+        <form
+          className="space-y-3"
+          onSubmit={e => {
+            e.preventDefault();
+            confirmMarkAsPaid();
+          }}
+        >
           <p className="text-sm text-gray-600 dark:text-gray-400">
             Enter your security code to mark this bill as paid.
           </p>
@@ -546,15 +552,14 @@ export function ShopBillsHistory() {
             inputMode="numeric"
             value={securityInput}
             onChange={e => { setSecurityInput(e.target.value); setSecurityError(''); }}
-            onKeyDown={e => { if (e.key === 'Enter') confirmMarkAsPaid(); }}
             error={securityError || undefined}
             autoFocus
           />
           <div className="flex justify-end gap-2 pt-1">
-            <Button variant="secondary" onClick={() => { setSecurityOpen(false); setSecurityTarget(null); setSecurityInput(''); setSecurityError(''); }}>Cancel</Button>
-            <Button variant="primary" onClick={confirmMarkAsPaid}>Confirm</Button>
+            <Button variant="secondary" type="button" onClick={() => { setSecurityOpen(false); setSecurityTarget(null); setSecurityInput(''); setSecurityError(''); }}>Cancel</Button>
+            <Button variant="primary" type="submit">Confirm</Button>
           </div>
-        </div>
+        </form>
       </Modal>
     </div>
   );
