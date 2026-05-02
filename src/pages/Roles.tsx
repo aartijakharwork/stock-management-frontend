@@ -45,7 +45,7 @@ export function Roles() {
   const openEdit = (role: Role) => {
     setEditing(role);
     setFormName(role.name);
-    setFormPerms({ ...role.permissions });
+    setFormPerms({ ...defaultPermissions, ...(role.permissions as unknown as Permissions) });
     setModalOpen(true);
   };
 
@@ -53,10 +53,10 @@ export function Roles() {
     if (!formName.trim()) return;
     if (editing) {
       setRolesList(prev =>
-        prev.map(r => r.id === editing.id ? { ...r, name: formName, permissions: formPerms } : r)
+        prev.map(r => r.id === editing.id ? { ...r, name: formName, permissions: formPerms as unknown as Role['permissions'] } : r)
       );
     } else {
-      setRolesList(prev => [...prev, { id: generateId(), name: formName, permissions: formPerms }]);
+      setRolesList(prev => [...prev, { id: generateId(), name: formName, permissions: formPerms as unknown as Role['permissions'] }]);
     }
     setModalOpen(false);
   };
@@ -81,7 +81,7 @@ export function Roles() {
               <div>
                 <h3 className="text-[15px] font-semibold text-[var(--text-primary)]">{role.name}</h3>
                 <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">
-                  {activeCount(role.permissions)} of {Object.keys(role.permissions).length} permissions
+                  {activeCount(role.permissions as unknown as Permissions)} of {Object.keys(role.permissions).length} permissions
                 </p>
               </div>
               <div className="flex gap-1">
@@ -94,9 +94,9 @@ export function Roles() {
               </div>
             </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {(Object.entries(role.permissions) as [keyof Permissions, boolean][]).map(
+              {(Object.entries(role.permissions as unknown as Permissions) as [keyof Permissions, boolean][]).map(
                 ([key, value]) =>
-                  value && (
+                  value && permissionLabels[key] && (
                     <Badge key={key} variant="success">
                       {permissionLabels[key]}
                     </Badge>

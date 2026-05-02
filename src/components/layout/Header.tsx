@@ -87,17 +87,6 @@ export function Header({ onMenuClick }: HeaderProps) {
   const dismissNotif = (id: string) => setNotifications(prev => prev.filter(n => n.id !== id));
   const clearAllNotifs = () => setNotifications([]);
 
-  const groupedNotifications = (() => {
-    const today: NotificationItem[] = [];
-    const earlier: NotificationItem[] = [];
-    const dayMs = 24 * 60 * 60 * 1000;
-    for (const n of notifications) {
-      if (Date.now() - new Date(n.at).getTime() < dayMs) today.push(n);
-      else earlier.push(n);
-    }
-    return { today, earlier };
-  })();
-
   const handleLogout = () => {
     logout();
     navigate('/auth/login');

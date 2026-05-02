@@ -6,7 +6,7 @@ import {
   Snowflake, Sun,
 } from 'lucide-react';
 import {
-  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line,
+  Area, Bar, BarChart, CartesianGrid, Cell, Legend, Line,
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, ComposedChart,
 } from 'recharts';
 import { StatCard, Card } from '../../components/ui/Card';
@@ -500,7 +500,7 @@ export function ShopReports() {
               <CartesianGrid stroke={gridColor} vertical={false} />
               <XAxis dataKey="label" stroke={axisColor} tick={{ fill: axisColor, fontSize: 11 }} tickLine={false} />
               <YAxis stroke={axisColor} tick={{ fill: axisColor, fontSize: 11 }} tickLine={false} width={52} tickFormatter={v => `₹${v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v}`} />
-              <Tooltip contentStyle={tooltipStyle} formatter={(v: number | string, name) => [formatCurrency(Number(v)), name === 'revenue' ? 'This period' : 'Previous']} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [formatCurrency(Number(v ?? 0)), String(name) === 'revenue' ? 'This period' : 'Previous'] as [string, string]} />
               <Area type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2.5} fill="url(#reportRevFill)" dot={{ fill: '#10b981', r: 3 }} name="revenue" />
               {compareMode && (
                 <Line type="monotone" dataKey="prev" stroke="#9ca3af" strokeWidth={1.5} strokeDasharray="4 3" dot={false} name="prev" />

@@ -65,7 +65,7 @@ export function SearchableSelect(props: SearchableSelectProps) {
   const {
     value, onChange, placeholder = 'Select…', emptyText = 'No matches',
     className = '', width = 'full', size = 'md', clearable = false,
-    renderOption, label, fullWidthPanel = true, disabled, id,
+    renderOption, label, fullWidthPanel: _fullWidthPanel = true, disabled, id,
   } = props;
 
   const [open, setOpen] = useState(false);

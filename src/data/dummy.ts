@@ -114,27 +114,57 @@ export const bills: Bill[] = [
 ];
 
 export const staffMembers: StaffMember[] = [
-  { id: '1', name: 'Rahul Mehta', phone: '9876543220', role: 'Manager', active: true },
-  { id: '2', name: 'Priya Sharma', phone: '9876543221', role: 'Cashier', active: true },
-  { id: '3', name: 'Karan Singh', phone: '9876543222', role: 'Inventory Staff', active: true },
-  { id: '4', name: 'Neha Gupta', phone: '9876543223', role: 'Cashier', active: false },
+  { id: '1', name: 'Rahul Mehta', phone: '9876543220', role: 'Manager', roleId: '1', active: true },
+  { id: '2', name: 'Priya Sharma', phone: '9876543221', role: 'Cashier', roleId: '2', active: true },
+  { id: '3', name: 'Karan Singh', phone: '9876543222', role: 'Inventory Staff', roleId: '3', active: true },
+  { id: '4', name: 'Neha Gupta', phone: '9876543223', role: 'Cashier', roleId: '2', active: false },
 ];
 
 export const roles: Role[] = [
   {
     id: '1',
     name: 'Manager',
-    permissions: { inventory: true, billing: true, udhaar: true, reports: true, staff: true, settings: true },
+    permissions: {
+      dashboard: { view: true, add: true, edit: true, delete: true },
+      inventory: { view: true, add: true, edit: true, delete: true },
+      billing: { view: true, add: true, edit: true, delete: true },
+      customers: { view: true, add: true, edit: true, delete: true },
+      bills: { view: true, add: true, edit: true, delete: true },
+      staff: { view: true, add: true, edit: true, delete: true },
+      roles: { view: true, add: false, edit: false, delete: false },
+      settings: { view: true, add: true, edit: true, delete: false },
+      subscription: { view: true, add: false, edit: false, delete: false },
+    },
   },
   {
     id: '2',
     name: 'Cashier',
-    permissions: { inventory: false, billing: true, udhaar: true, reports: false, staff: false, settings: false },
+    permissions: {
+      dashboard: { view: true, add: false, edit: false, delete: false },
+      inventory: { view: true, add: false, edit: false, delete: false },
+      billing: { view: true, add: true, edit: true, delete: false },
+      customers: { view: true, add: true, edit: false, delete: false },
+      bills: { view: true, add: false, edit: false, delete: false },
+      staff: { view: false, add: false, edit: false, delete: false },
+      roles: { view: false, add: false, edit: false, delete: false },
+      settings: { view: false, add: false, edit: false, delete: false },
+      subscription: { view: false, add: false, edit: false, delete: false },
+    },
   },
   {
     id: '3',
     name: 'Inventory Staff',
-    permissions: { inventory: true, billing: false, udhaar: false, reports: false, staff: false, settings: false },
+    permissions: {
+      dashboard: { view: true, add: false, edit: false, delete: false },
+      inventory: { view: true, add: true, edit: true, delete: false },
+      billing: { view: false, add: false, edit: false, delete: false },
+      customers: { view: false, add: false, edit: false, delete: false },
+      bills: { view: false, add: false, edit: false, delete: false },
+      staff: { view: false, add: false, edit: false, delete: false },
+      roles: { view: false, add: false, edit: false, delete: false },
+      settings: { view: false, add: false, edit: false, delete: false },
+      subscription: { view: false, add: false, edit: false, delete: false },
+    },
   },
 ];
 
@@ -144,6 +174,8 @@ export const subscriptionPlans: SubscriptionPlan[] = [
     name: 'Basic',
     price: 299,
     period: 'month',
+    duration: '1 month',
+    perMonthPrice: 299,
     features: ['Up to 100 items', '1 staff account', 'Basic billing', 'Email support'],
     recommended: false,
   },
@@ -152,6 +184,8 @@ export const subscriptionPlans: SubscriptionPlan[] = [
     name: 'Standard',
     price: 599,
     period: 'month',
+    duration: '1 month',
+    perMonthPrice: 599,
     features: ['Up to 500 items', '3 staff accounts', 'Full billing + Udhaar', 'Bill printing', 'Priority support'],
     recommended: true,
   },
@@ -160,6 +194,8 @@ export const subscriptionPlans: SubscriptionPlan[] = [
     name: 'Pro',
     price: 999,
     period: 'month',
+    duration: '1 month',
+    perMonthPrice: 999,
     features: ['Unlimited items', 'Unlimited staff', 'All features', 'Reports & analytics', 'Dedicated support', 'Multi-shop'],
     recommended: false,
   },

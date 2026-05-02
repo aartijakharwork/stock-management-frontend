@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useAuth } from './AuthContext';
-import type { AppModule, ModuleAction, RolePermissions, ALL_MODULE_PERMISSIONS } from '../types';
+import type { AppModule, ModuleAction, RolePermissions } from '../types';
 
 interface PermissionContextValue {
   permissions: RolePermissions | null;
