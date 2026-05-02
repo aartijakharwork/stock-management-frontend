@@ -117,13 +117,6 @@ function StockPill({ item }: { item: InventoryItem }) {
   return <Badge variant="success">{label}</Badge>;
 }
 
-function MarginBadge({ cost, price }: { cost?: number; price: number }) {
-  const m = calcMargin(cost, price);
-  if (m == null) return <span className="text-xs text-gray-400">—</span>;
-  const tone = m >= 30 ? 'success' : m >= 15 ? 'warning' : 'danger';
-  return <Badge variant={tone}>{m.toFixed(0)}%</Badge>;
-}
-
 type StockFilter = '' | 'low' | 'out';
 
 export function ShopInventory() {
@@ -137,8 +130,6 @@ export function ShopInventory() {
   const [newCategory, setNewCategory] = useState('');
   const [addingCategory, setAddingCategory] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  // Cost & margin columns are always visible — there is no toggle.
-  const showCost = true;
   const [importOpen, setImportOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -187,9 +178,10 @@ export function ShopInventory() {
   const [sortState, setSortState] = useState<SortState | null>(null);
   const sortFns: Record<string, (a: InventoryItem, b: InventoryItem) => number> = {
     item: (a, b) => a.name.localeCompare(b.name),
-    price: (a, b) => a.price - b.price,
+    cost: (a, b) => (a.costPrice ?? 0) - (b.costPrice ?? 0),
+    mrp: (a, b) => (a.mrp ?? a.price) - (b.mrp ?? b.price),
+    discount: (a, b) => (a.discountPercent ?? 0) - (b.discountPercent ?? 0),
     stock: (a, b) => a.stock - b.stock,
-    margin: (a, b) => (calcMargin(a.costPrice, a.price) ?? -1) - (calcMargin(b.costPrice, b.price) ?? -1),
   };
   const sorted = useMemo(() => {
     if (!sortState || !sortFns[sortState.key]) return filtered;
@@ -515,26 +507,34 @@ export function ShopInventory() {
                     </div>
                   ),
                 },
-                ...(showCost ? [{
+                {
                   key: 'cost',
-                  header: 'Cost',
+                  header: 'Cost price',
+                  sortable: true,
                   render: (i: InventoryItem) => <span className="tabular-nums text-gray-500">{i.costPrice ? formatCurrency(i.costPrice) : '—'}</span>,
                   className: 'text-right',
-                }] : []),
+                },
                 {
-                  key: 'price',
-                  header: 'Sell price',
+                  key: 'mrp',
+                  header: 'MRP',
                   sortable: true,
-                  render: (i: InventoryItem) => <span className="tabular-nums font-medium text-gray-900 dark:text-white">{formatCurrency(i.price)}</span>,
+                  render: (i: InventoryItem) => {
+                    const mrp = i.mrp ?? i.price;
+                    return <span className="tabular-nums font-medium text-gray-900 dark:text-white">{formatCurrency(mrp)}</span>;
+                  },
                   className: 'text-right',
                 },
-                ...(showCost ? [{
-                  key: 'margin',
-                  header: 'Margin',
+                {
+                  key: 'discount',
+                  header: 'Discount',
                   sortable: true,
-                  render: (i: InventoryItem) => <MarginBadge cost={i.costPrice} price={i.price} />,
+                  render: (i: InventoryItem) => {
+                    const d = i.discountPercent ?? 0;
+                    if (!d) return <span className="text-xs text-gray-400">—</span>;
+                    return <Badge variant="success">{d}% off</Badge>;
+                  },
                   className: 'text-right',
-                }] : []),
+                },
                 {
                   key: 'stock',
                   header: 'Stock',
@@ -584,16 +584,19 @@ export function ShopInventory() {
                       {i.sku && <span className="font-mono text-gray-400 truncate">· <Highlight text={i.sku} query={search} /></span>}
                     </p>
                     <p className="text-sm font-medium text-gray-900 dark:text-white"><Highlight text={i.name} query={search} /></p>
-                    <p className="text-xs text-gray-500 tabular-nums mt-0.5">Value: {formatCurrency(i.price * i.stock)}</p>
-                    {showCost && i.costPrice ? (
-                      <p className="text-xs text-gray-500 tabular-nums mt-0.5">Cost: {formatCurrency(i.costPrice)} · Margin <MarginBadge cost={i.costPrice} price={i.price} /></p>
-                    ) : null}
+                    <p className="text-xs text-gray-500 tabular-nums mt-0.5">
+                      {i.costPrice ? <>Cost: {formatCurrency(i.costPrice)}</> : 'Cost: —'}
+                      {(i.discountPercent ?? 0) > 0 && (
+                        <span className="ml-1.5 text-emerald-600 dark:text-emerald-400">· {i.discountPercent}% off</span>
+                      )}
+                    </p>
                     {lastSoldMap.get(i.id) && (
                       <p className="text-[11px] text-gray-400 mt-0.5">Last sold: {lastSoldMap.get(i.id)}</p>
                     )}
                   </div>
                   <div className="text-right shrink-0">
-                    <span className="tabular-nums text-sm font-semibold text-gray-900 dark:text-white">{formatCurrency(i.price)}</span>
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wider">MRP</p>
+                    <span className="tabular-nums text-sm font-semibold text-gray-900 dark:text-white">{formatCurrency(i.mrp ?? i.price)}</span>
                     <div className="mt-1"><StockPill item={i} /></div>
                   </div>
                 </div>
