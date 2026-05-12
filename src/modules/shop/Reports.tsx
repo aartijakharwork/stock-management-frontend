@@ -3,7 +3,7 @@ import {
   TrendingUp, TrendingDown, IndianRupee, Clock, Users,
   Banknote, Smartphone, CreditCard as CardIcon, AlertTriangle,
   PieChart as PieChartIcon, FileText, BookOpen, Receipt as ReceiptIcon,
-  Snowflake, Sun,
+  Snowflake, Sun, Lock, Eye, EyeOff,
 } from 'lucide-react';
 import {
   Area, Bar, BarChart, CartesianGrid, Cell, Legend, Line,
@@ -21,6 +21,9 @@ import { useTheme } from '../../context/ThemeContext';
 import { useShopCatalog } from '../../context/ShopCatalogContext';
 import type { ExportColumn } from '../../utils/exporters';
 import type { Bill, InventoryItem } from '../../types';
+import { useCostPriceSecurity } from '../../hooks/useCostPriceSecurity';
+import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
 
 type Period = '7d' | '30d' | 'all';
 
@@ -64,6 +67,9 @@ export function ShopReports() {
   const [compareMode, setCompareMode] = useState(false);
   const [drillDown, setDrillDown] = useState<{ title: string; bills: Bill[] } | null>(null);
   const { theme } = useTheme();
+  const cpSec = useCostPriceSecurity();
+  const [cpPinInput, setCpPinInput] = useState('');
+  const [cpPinModalOpen, setCpPinModalOpen] = useState(false);
   const isDark = theme === 'dark';
 
   const tooltipStyle = isDark
@@ -518,35 +524,55 @@ export function ShopReports() {
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Profit & Loss</h2>
             <JargonHint term="cogs" />
           </div>
-          <span className="text-xs text-gray-500">{periodLabel}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">{periodLabel}</span>
+            {cpSec.enabled && (
+              cpSec.revealed
+                ? <button onClick={() => cpSec.hide()} className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><EyeOff size={12} /> Hide</button>
+                : <button onClick={() => setCpPinModalOpen(true)} className="inline-flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400 hover:underline"><Eye size={12} /> Reveal</button>
+            )}
+          </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30">
-            <p className="text-[11px] uppercase font-semibold text-emerald-700 dark:text-emerald-400">Revenue</p>
-            <p className="text-base font-bold tabular-nums text-emerald-700 dark:text-emerald-400">{formatCurrency(totalRevenue)}</p>
+        {cpSec.isCostHidden ? (
+          <div className="flex flex-col items-center justify-center py-8 gap-3">
+            <div className="w-14 h-14 rounded-full bg-purple-50 dark:bg-purple-500/10 flex items-center justify-center text-purple-600 dark:text-purple-400">
+              <Lock size={24} />
+            </div>
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Profit data is protected</p>
+            <p className="text-xs text-gray-500 text-center max-w-xs">COGS, margins, and profit figures require admin PIN to view.</p>
+            <Button variant="primary" size="sm" icon={<Eye size={14} />} onClick={() => setCpPinModalOpen(true)}>Enter PIN to reveal</Button>
           </div>
-          <div className="p-3 rounded-lg bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/30">
-            <p className="text-[11px] uppercase font-semibold text-orange-700 dark:text-orange-400">− COGS</p>
-            <p className="text-base font-bold tabular-nums text-orange-700 dark:text-orange-400">{formatCurrency(cogs)}</p>
-          </div>
-          <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30">
-            <p className="text-[11px] uppercase font-semibold text-blue-700 dark:text-blue-400">= Gross Profit</p>
-            <p className="text-base font-bold tabular-nums text-blue-700 dark:text-blue-400">{formatCurrency(grossProfit)}</p>
-            <p className="text-[11px] text-blue-700/70 dark:text-blue-300/70">Margin {grossMargin.toFixed(1)}%</p>
-          </div>
-          <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30">
-            <p className="text-[11px] uppercase font-semibold text-red-700 dark:text-red-400">− Expenses</p>
-            <p className="text-base font-bold tabular-nums text-red-700 dark:text-red-400">{formatCurrency(totalExpenses)}</p>
-          </div>
-          <div className={`p-3 rounded-lg border ${netProfitWithCogs >= 0 ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30' : 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30'}`}>
-            <p className={`text-[11px] uppercase font-semibold ${netProfitWithCogs >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>= Net Profit</p>
-            <p className={`text-base font-bold tabular-nums ${netProfitWithCogs >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>{formatCurrency(netProfitWithCogs)}</p>
-          </div>
-        </div>
-        <p className="text-[11px] text-gray-400 mt-3">
-          COGS uses item cost prices when available (auto-fills to 70% of sell price for items missing cost data).
-        </p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30">
+                <p className="text-[11px] uppercase font-semibold text-emerald-700 dark:text-emerald-400">Revenue</p>
+                <p className="text-base font-bold tabular-nums text-emerald-700 dark:text-emerald-400">{formatCurrency(totalRevenue)}</p>
+              </div>
+              <div className="p-3 rounded-lg bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/30">
+                <p className="text-[11px] uppercase font-semibold text-orange-700 dark:text-orange-400">− COGS</p>
+                <p className="text-base font-bold tabular-nums text-orange-700 dark:text-orange-400">{formatCurrency(cogs)}</p>
+              </div>
+              <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30">
+                <p className="text-[11px] uppercase font-semibold text-blue-700 dark:text-blue-400">= Gross Profit</p>
+                <p className="text-base font-bold tabular-nums text-blue-700 dark:text-blue-400">{formatCurrency(grossProfit)}</p>
+                <p className="text-[11px] text-blue-700/70 dark:text-blue-300/70">Margin {grossMargin.toFixed(1)}%</p>
+              </div>
+              <div className="p-3 rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30">
+                <p className="text-[11px] uppercase font-semibold text-red-700 dark:text-red-400">− Expenses</p>
+                <p className="text-base font-bold tabular-nums text-red-700 dark:text-red-400">{formatCurrency(totalExpenses)}</p>
+              </div>
+              <div className={`p-3 rounded-lg border ${netProfitWithCogs >= 0 ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30' : 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30'}`}>
+                <p className={`text-[11px] uppercase font-semibold ${netProfitWithCogs >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>= Net Profit</p>
+                <p className={`text-base font-bold tabular-nums ${netProfitWithCogs >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>{formatCurrency(netProfitWithCogs)}</p>
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-3">
+              COGS uses item cost prices when available (auto-fills to 70% of sell price for items missing cost data).
+            </p>
+          </>
+        )}
       </Card>
 
       {/* Day Book / Cash Book */}
@@ -932,6 +958,41 @@ export function ShopReports() {
         ) : (
           <p className="text-sm text-gray-500 py-8 text-center">No bills found.</p>
         )}
+      </Modal>
+
+      {/* Cost price PIN modal */}
+      <Modal open={cpPinModalOpen} onClose={() => { setCpPinModalOpen(false); setCpPinInput(''); }} title="Reveal Profit Data" size="sm">
+        <form
+          className="space-y-4"
+          onSubmit={e => {
+            e.preventDefault();
+            if (cpSec.verifyPin(cpPinInput)) {
+              cpSec.reveal();
+              setCpPinModalOpen(false);
+              setCpPinInput('');
+            } else {
+              setCpPinInput('');
+            }
+          }}
+        >
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-14 h-14 rounded-full bg-purple-50 dark:bg-purple-500/10 flex items-center justify-center text-purple-600 dark:text-purple-400">
+              <Lock size={24} />
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-400 text-center">Enter admin PIN to view profit & cost data</p>
+          </div>
+          <Input
+            label="Admin PIN"
+            type="password"
+            value={cpPinInput}
+            onChange={e => setCpPinInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            placeholder="Enter PIN"
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" type="button" onClick={() => { setCpPinModalOpen(false); setCpPinInput(''); }}>Cancel</Button>
+            <Button variant="primary" type="submit" disabled={cpPinInput.length < 4}>Verify & Reveal</Button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

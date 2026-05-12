@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, ShoppingCart, Package, Users, FileText, Settings } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Package, Users, FileText, Settings, BookOpen } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionContext';
 import type { AppModule } from '../../types';
 
@@ -13,6 +13,7 @@ interface NavItemDef {
 
 const NAV_ITEMS: NavItemDef[] = [
   { to: '/shop',           icon: LayoutDashboard, label: 'Home',      module: 'dashboard', end: true  },
+  { to: '/shop/catalogue', icon: BookOpen,        label: 'Catalogue', module: 'catalogue', end: false },
   { to: '/shop/billing',   icon: ShoppingCart,    label: 'Bill',      module: 'billing',   end: false },
   { to: '/shop/inventory', icon: Package,         label: 'Stock',     module: 'inventory', end: false },
   { to: '/shop/customers', icon: Users,           label: 'Customers', module: 'customers', end: false },

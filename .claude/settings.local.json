@@ -4,7 +4,10 @@
       "Bash(npx tsc *)",
       "Bash(npx vite *)",
       "Bash(timeout 5)",
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Bash(Get-ChildItem -Path \"D:\\\\Serviwo\\\\Stock-management\\\\stock-management-frontend\" -Force)",
+      "Bash(Select-Object Name, Mode)",
+      "Bash(powershell *)"
     ]
   }
 }

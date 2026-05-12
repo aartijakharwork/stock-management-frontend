@@ -13,6 +13,7 @@ import {
   Store,
   Wallet,
   Truck,
+  BookOpen,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -48,6 +49,7 @@ const navGroups: NavGroup[] = [
     label: 'Operations',
     items: [
       { to: '/shop/billing', icon: ShoppingCart, label: 'New Bill', module: 'billing' },
+      { to: '/shop/catalogue', icon: BookOpen, label: 'Parts Catalogue', module: 'catalogue' },
       { to: '/shop/inventory', icon: Package, label: 'Inventory', module: 'inventory' },
       { to: '/shop/customers', icon: Users, label: 'Customers', module: 'customers' },
       { to: '/shop/bills', icon: FileText, label: 'Bills History', module: 'bills' },

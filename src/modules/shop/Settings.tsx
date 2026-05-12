@@ -22,6 +22,7 @@ import { isSoundEnabled, setSoundEnabled, playSuccess } from '../../utils/feedba
 import { MVP_MODE, MVP_VISIBLE_SETTINGS_TABS } from '../../config/mvp';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { SettingsCategoriesPanel } from './Categories';
+import { useCostPriceSecurity } from '../../hooks/useCostPriceSecurity';
 
 type Tab = 'profile' | 'template' | 'categories' | 'tax' | 'numbering' | 'notifications' | 'integrations' | 'backup' | 'danger';
 
@@ -56,6 +57,11 @@ export function ShopSettings() {
   const [securityEnabled, setSecurityEnabled] = useState(() => localStorage.getItem('shopmanager.security.enabled') === 'true');
   const [securityCode, setSecurityCode] = useState(() => localStorage.getItem('shopmanager.security.code') || '');
   const [showCode, setShowCode] = useState(false);
+  const cpSecurity = useCostPriceSecurity();
+  const [cpPin, setCpPin] = useState(cpSecurity.pin);
+  const [cpCodeMap, setCpCodeMap] = useState(cpSecurity.codeMap);
+  const [showCpPin, setShowCpPin] = useState(false);
+  const [cpTestInput, setCpTestInput] = useState('');
   const { addToast } = useToast();
   const { user, logout } = useAuth();
   const { can } = usePermissions();
@@ -522,6 +528,121 @@ export function ShopSettings() {
                     </button>
                   </div>
                   {canEdit && <Button variant="primary" size="sm" icon={<Save size={14} />} onClick={handleSecuritySave}>Update code</Button>}
+                </div>
+              </div>
+            )}
+          </Card>
+
+          {/* Cost price security */}
+          <Card>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-purple-50 dark:bg-purple-500/10 flex items-center justify-center text-purple-600 dark:text-purple-400">
+                  <KeyRound size={20} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Cost Price Protection</h2>
+                  <p className="text-xs text-gray-500">Hide cost prices from staff. Only visible after PIN verification.</p>
+                </div>
+              </div>
+              <Toggle checked={cpSecurity.enabled} onChange={v => {
+                cpSecurity.setEnabled(v);
+                if (!v) cpSecurity.hide();
+                addToast('success', v ? 'Cost price protection enabled' : 'Cost price protection disabled');
+              }} />
+            </div>
+
+            {cpSecurity.enabled && (
+              <div className="mt-5 pt-5 border-t border-gray-200 dark:border-gray-800 space-y-5">
+                {/* PIN */}
+                <div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Admin PIN</p>
+                  <p className="text-xs text-gray-500 mb-3">Staff will need this PIN to reveal cost prices.</p>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <div className="flex-1 relative">
+                      <Input
+                        label="PIN (4–6 digits)"
+                        type={showCpPin ? 'text' : 'password'}
+                        value={cpPin}
+                        onChange={e => setCpPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="e.g. 1234"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCpPin(!showCpPin)}
+                        className="absolute right-3 top-[38px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                      >
+                        {showCpPin ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                    {canEdit && (
+                      <Button variant="primary" size="sm" icon={<Save size={14} />} onClick={() => {
+                        if (cpPin.length < 4) { addToast('error', 'PIN must be at least 4 digits'); return; }
+                        cpSecurity.setPin(cpPin);
+                        addToast('success', 'Cost price PIN saved');
+                      }}>Save PIN</Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Coded input toggle */}
+                <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Coded Cost Price Input</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Enter cost price as alphabetic codes instead of numbers. Only you know the mapping.</p>
+                    </div>
+                    <Toggle checked={cpSecurity.codedInputEnabled} onChange={v => {
+                      cpSecurity.setCodedInput(v);
+                      addToast('success', v ? 'Coded input enabled' : 'Coded input disabled');
+                    }} />
+                  </div>
+
+                  {cpSecurity.codedInputEnabled && (
+                    <div className="mt-4 space-y-4">
+                      <div>
+                        <Input
+                          label="Code mapping (10 unique letters, one per digit 0-9)"
+                          value={cpCodeMap}
+                          onChange={e => {
+                            const v = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+                            const unique = [...new Set(v.split(''))].join('').slice(0, 10);
+                            setCpCodeMap(unique);
+                          }}
+                          placeholder="e.g. ABCDEFGHIJ"
+                        />
+                        <p className="text-xs text-gray-500 mt-1.5">Each letter maps to a digit: {cpCodeMap.split('').map((ch, i) => `${ch}=${i}`).join(', ')}</p>
+                      </div>
+                      {canEdit && (
+                        <Button variant="primary" size="sm" icon={<Save size={14} />} onClick={() => {
+                          if (cpCodeMap.length < 10) { addToast('error', 'Enter 10 unique letters'); return; }
+                          cpSecurity.setCodeMap(cpCodeMap);
+                          addToast('success', 'Code mapping saved');
+                        }}>Save mapping</Button>
+                      )}
+
+                      {/* Live test */}
+                      <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 p-3 space-y-2">
+                        <p className="text-xs font-medium text-gray-500">Test your code</p>
+                        <div className="flex gap-2 items-end">
+                          <div className="flex-1">
+                            <Input
+                              label="Type coded price"
+                              value={cpTestInput}
+                              onChange={e => setCpTestInput(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
+                              placeholder={`e.g. ${cpSecurity.encodePrice(540)}`}
+                            />
+                          </div>
+                          <div className="pb-1">
+                            <p className="text-xs text-gray-500">Decodes to</p>
+                            <p className="text-lg font-bold tabular-nums text-gray-900 dark:text-white">
+                              {cpTestInput ? (cpSecurity.decodePrice(cpTestInput) != null ? `₹${cpSecurity.decodePrice(cpTestInput)!.toLocaleString('en-IN')}` : <span className="text-red-500 text-sm">Invalid</span>) : '—'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

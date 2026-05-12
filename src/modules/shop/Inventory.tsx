@@ -13,6 +13,9 @@ import {
   Upload,
   Sparkles,
   Tags,
+  Eye,
+  EyeOff,
+  Lock,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -38,6 +41,7 @@ import { useShopCatalog } from '../../context/ShopCatalogContext';
 import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
 import type { InventoryItem, SortState } from '../../types';
 import type { ExportColumn } from '../../utils/exporters';
+import { useCostPriceSecurity } from '../../hooks/useCostPriceSecurity';
 
 const DEFAULT_REORDER = 10;
 const DEFAULT_TAX_RATE = 18;
@@ -126,6 +130,8 @@ export function ShopInventory() {
   const [stockFilter, setStockFilter] = useState<StockFilter>('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<InventoryItem | null>(null);
+  const [viewItem, setViewItem] = useState<InventoryItem | null>(null);
+  const [viewModalOpen, setViewModalOpen] = useState(false);
   const [form, setForm] = useState<Omit<InventoryItem, 'id'>>(emptyItem);
   const [newCategory, setNewCategory] = useState('');
   const [addingCategory, setAddingCategory] = useState(false);
@@ -136,6 +142,10 @@ export function ShopInventory() {
   const { addToast } = useToast();
   const { can } = usePermissions();
   const { track } = useRecentlyViewed();
+  const cpSec = useCostPriceSecurity();
+  const [cpPinInput, setCpPinInput] = useState('');
+  const [cpPinModalOpen, setCpPinModalOpen] = useState(false);
+  const [costCodeInput, setCostCodeInput] = useState('');
 
   useEffect(() => {
     const t = setTimeout(() => setLoading(false), 700);
@@ -145,6 +155,13 @@ export function ShopInventory() {
   const canAdd = can('inventory', 'add');
   const canEdit = can('inventory', 'edit');
   const canDelete = can('inventory', 'delete');
+
+  const exportColumns = useMemo(() =>
+    cpSec.isCostHidden
+      ? INVENTORY_EXPORT_COLUMNS.filter(c => c.header !== 'Cost (₹)' && c.header !== 'Margin %')
+      : INVENTORY_EXPORT_COLUMNS,
+    [cpSec.isCostHidden],
+  );
 
   const supplierOptions = useMemo(() => [
     { label: '— None —', value: '' },
@@ -224,11 +241,13 @@ export function ShopInventory() {
     setAddingCategory(false);
     setNewCategory('');
     setShowAdvanced(false);
+    setCostCodeInput('');
     setModalOpen(true);
   };
 
   const openEdit = (item: InventoryItem) => {
     setEditing(item);
+    setCostCodeInput(cpSec.codedInputEnabled && item.costPrice ? cpSec.encodePrice(item.costPrice) : '');
     setForm({
       name: item.name,
       price: item.price,
@@ -253,6 +272,18 @@ export function ShopInventory() {
     setNewCategory('');
     setShowAdvanced(Boolean(item.sku || item.barcode || item.hsn || item.supplierId));
     setModalOpen(true);
+    track({
+      kind: 'item',
+      id: item.id,
+      label: item.name,
+      sublabel: `${item.category} · ${formatCurrency(item.price)} · ${item.stock} ${item.unit}${item.stock === 1 ? '' : 's'}`,
+      to: '/shop/inventory',
+    });
+  };
+
+  const openView = (item: InventoryItem) => {
+    setViewItem(item);
+    setViewModalOpen(true);
     track({
       kind: 'item',
       id: item.id,
@@ -344,10 +375,15 @@ export function ShopInventory() {
             baseName="inventory"
             title="Inventory export"
             meta={`${filtered.length} of ${items.length} items`}
-            columns={INVENTORY_EXPORT_COLUMNS}
+            columns={exportColumns}
             rows={filtered}
             size="sm"
           />
+          {cpSec.enabled && (
+            cpSec.revealed
+              ? <Button variant="ghost" size="sm" icon={<EyeOff size={14} />} onClick={() => cpSec.hide()}>Hide Cost</Button>
+              : <Button variant="secondary" size="sm" icon={<Eye size={14} />} onClick={() => setCpPinModalOpen(true)}>Reveal Cost</Button>
+          )}
           {canAdd && <Button variant="secondary" size="sm" icon={<Upload size={14} />} onClick={() => setImportOpen(true)}>Import</Button>}
           {canAdd && <Button variant="primary" size="sm" icon={<Plus size={14} />} onClick={openAdd}>Add item</Button>}
         </div>
@@ -434,7 +470,7 @@ export function ShopInventory() {
             baseName="inventory-selected"
             title="Export selected"
             meta={`${selectedIds.size} items`}
-            columns={INVENTORY_EXPORT_COLUMNS}
+            columns={exportColumns}
             rows={items.filter(i => selectedIds.has(i.id))}
             size="sm"
           />
@@ -510,8 +546,10 @@ export function ShopInventory() {
                 {
                   key: 'cost',
                   header: 'Cost price',
-                  sortable: true,
-                  render: (i: InventoryItem) => <span className="tabular-nums text-gray-500">{i.costPrice ? formatCurrency(i.costPrice) : '—'}</span>,
+                  sortable: !cpSec.isCostHidden,
+                  render: (i: InventoryItem) => cpSec.isCostHidden
+                    ? <span className="inline-flex items-center gap-1 text-gray-400"><Lock size={11} /> ••••••</span>
+                    : <span className="tabular-nums text-gray-500">{i.costPrice ? formatCurrency(i.costPrice) : '—'}</span>,
                   className: 'text-right',
                 },
                 {
@@ -526,7 +564,7 @@ export function ShopInventory() {
                 },
                 {
                   key: 'discount',
-                  header: 'Discount',
+                  header: 'Suggested Discount',
                   sortable: true,
                   render: (i: InventoryItem) => {
                     const d = i.discountPercent ?? 0;
@@ -550,9 +588,10 @@ export function ShopInventory() {
                 {
                   key: 'actions',
                   header: '',
-                  className: 'text-right w-40',
+                  className: 'text-right w-52',
                   render: (i: InventoryItem) => (
                     <div className="flex justify-end gap-1">
+                      <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={() => openView(i)}>View</Button>
                       {canEdit && (
                         <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(i)}>Edit</Button>
                       )}
@@ -585,7 +624,9 @@ export function ShopInventory() {
                     </p>
                     <p className="text-sm font-medium text-gray-900 dark:text-white"><Highlight text={i.name} query={search} /></p>
                     <p className="text-xs text-gray-500 tabular-nums mt-0.5">
-                      {i.costPrice ? <>Cost: {formatCurrency(i.costPrice)}</> : 'Cost: —'}
+                      {cpSec.isCostHidden
+                        ? <span className="inline-flex items-center gap-1"><Lock size={10} /> ••••••</span>
+                        : (i.costPrice ? <>Cost: {formatCurrency(i.costPrice)}</> : 'Cost: —')}
                       {(i.discountPercent ?? 0) > 0 && (
                         <span className="ml-1.5 text-emerald-600 dark:text-emerald-400">· {i.discountPercent}% off</span>
                       )}
@@ -600,12 +641,11 @@ export function ShopInventory() {
                     <div className="mt-1"><StockPill item={i} /></div>
                   </div>
                 </div>
-                {(canEdit || canDelete) && (
-                  <div className="mt-3 flex gap-2 border-t border-gray-200 dark:border-gray-800 pt-3">
-                    {canEdit && <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(i)} className="flex-1">Edit</Button>}
-                    {canDelete && <Button variant="ghost" size="sm" icon={<Trash2 size={13} />} onClick={() => handleDelete(i.id, i.name)} className="flex-1">Delete</Button>}
-                  </div>
-                )}
+                <div className="mt-3 flex gap-2 border-t border-gray-200 dark:border-gray-800 pt-3">
+                  <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={() => openView(i)} className="flex-1">View</Button>
+                  {canEdit && <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(i)} className="flex-1">Edit</Button>}
+                  {canDelete && <Button variant="ghost" size="sm" icon={<Trash2 size={13} />} onClick={() => handleDelete(i.id, i.name)} className="flex-1">Delete</Button>}
+                </div>
               </li>
             ))}
           </ul>
@@ -634,10 +674,44 @@ export function ShopInventory() {
           <Input label="Item name *" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Engine Oil 5W-30" />
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            <Input label="Cost price (₹)" type="number" value={form.costPrice || ''} onChange={e => setForm({ ...form, costPrice: Number(e.target.value) })} placeholder="0" />
+            {cpSec.enabled && cpSec.codedInputEnabled ? (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Cost price (coded)</label>
+                <div className="flex gap-1.5">
+                  <input
+                    value={costCodeInput}
+                    onChange={e => {
+                      const v = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+                      setCostCodeInput(v);
+                      const decoded = cpSec.decodePrice(v);
+                      if (decoded != null) setForm(f => ({ ...f, costPrice: decoded }));
+                    }}
+                    placeholder={`e.g. ${cpSec.encodePrice(540)}`}
+                    className="flex-1 h-10 rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 px-3 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none font-mono tracking-widest"
+                  />
+                </div>
+                {costCodeInput && cpSec.decodePrice(costCodeInput) != null && (
+                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400">Decoded: ₹{cpSec.decodePrice(costCodeInput)!.toLocaleString('en-IN')}</p>
+                )}
+                {costCodeInput && cpSec.decodePrice(costCodeInput) == null && (
+                  <p className="text-[11px] text-red-500">Invalid code</p>
+                )}
+              </div>
+            ) : cpSec.isCostHidden ? (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Cost price (₹)</label>
+                <div className="flex items-center gap-2 h-10 px-3 rounded-lg bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                  <Lock size={14} className="text-gray-400" />
+                  <span className="text-sm text-gray-400 tracking-widest">••••••</span>
+                </div>
+                <button type="button" onClick={() => setCpPinModalOpen(true)} className="text-[11px] text-purple-600 dark:text-purple-400 hover:underline text-left">Enter PIN to edit</button>
+              </div>
+            ) : (
+              <Input label="Cost price (₹)" type="number" value={form.costPrice || ''} onChange={e => setForm({ ...form, costPrice: Number(e.target.value) })} placeholder="0" />
+            )}
             <Input label="MRP (₹) *" type="number" value={form.mrp || ''} onChange={e => setForm({ ...form, mrp: Number(e.target.value) })} placeholder="0" />
             <Input
-              label="Discount (%)"
+              label="Suggested Discount (%)"
               type="number"
               value={form.discountPercent || ''}
               onChange={e => {
@@ -746,6 +820,138 @@ export function ShopInventory() {
         </form>
       </Modal>
 
+      {/* View Item Modal */}
+      <Modal open={viewModalOpen} onClose={() => setViewModalOpen(false)} title="Item Details" size="lg">
+        {viewItem && (() => {
+          const mrp = viewItem.mrp ?? viewItem.price;
+          const disc = viewItem.discountPercent ?? 0;
+          const sellPrice = computeSellPrice(mrp, disc);
+          const margin = calcMargin(viewItem.costPrice, sellPrice);
+          const stockVal = viewItem.price * viewItem.stock;
+          const supplier = supplierName(viewItem.supplierId);
+          const lastSold = lastSoldMap.get(viewItem.id);
+
+          return (
+            <div className="space-y-5">
+              {/* Header */}
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs text-gray-500">{viewItem.category}{viewItem.sku ? ` · ${viewItem.sku}` : ''}</p>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{viewItem.name}</h3>
+                  {supplier && <p className="text-xs text-gray-400 mt-0.5">via {supplier}</p>}
+                </div>
+                <StockPill item={viewItem} />
+              </div>
+
+              {/* Pricing grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Cost Price</p>
+                  {cpSec.isCostHidden ? (
+                    <span className="inline-flex items-center gap-1.5 text-sm text-gray-400"><Lock size={13} /> ••••••</span>
+                  ) : (
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">{viewItem.costPrice ? formatCurrency(viewItem.costPrice) : '—'}</p>
+                  )}
+                </div>
+                <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">MRP</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">{formatCurrency(mrp)}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Sell Price</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">{formatCurrency(sellPrice)}</p>
+                  {disc > 0 && <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5">{disc}% off MRP</p>}
+                </div>
+                <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Margin</p>
+                  {cpSec.isCostHidden ? (
+                    <span className="inline-flex items-center gap-1.5 text-sm text-gray-400"><Lock size={13} /> ••••••</span>
+                  ) : (
+                    <p className={`text-sm font-semibold tabular-nums ${margin != null && margin >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                      {margin != null ? `${margin.toFixed(1)}%` : '—'}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Stock & value */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Stock</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{viewItem.stock} {viewItem.unit}{viewItem.stock === 1 ? '' : 's'}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Reorder at: {viewItem.reorderLevel ?? DEFAULT_REORDER}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Stock Value</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">{formatCurrency(stockVal)}</p>
+                </div>
+                {lastSold && (
+                  <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Last Sold</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{lastSold}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Additional details */}
+              {(viewItem.barcode || viewItem.hsn || viewItem.taxRate || viewItem.batchNo || viewItem.expiryDate) && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2 text-sm px-1">
+                  {viewItem.barcode && (
+                    <div>
+                      <span className="text-gray-500 text-xs">Barcode:</span>
+                      <p className="font-mono text-gray-900 dark:text-white">{viewItem.barcode}</p>
+                    </div>
+                  )}
+                  {viewItem.hsn && (
+                    <div>
+                      <span className="text-gray-500 text-xs">HSN:</span>
+                      <p className="font-mono text-gray-900 dark:text-white">{viewItem.hsn}</p>
+                    </div>
+                  )}
+                  {viewItem.taxRate != null && (
+                    <div>
+                      <span className="text-gray-500 text-xs">Tax Rate:</span>
+                      <p className="text-gray-900 dark:text-white">{viewItem.taxRate}%</p>
+                    </div>
+                  )}
+                  {viewItem.batchNo && (
+                    <div>
+                      <span className="text-gray-500 text-xs">Batch:</span>
+                      <p className="text-gray-900 dark:text-white">{viewItem.batchNo}</p>
+                    </div>
+                  )}
+                  {viewItem.expiryDate && (
+                    <div>
+                      <span className="text-gray-500 text-xs">Expiry:</span>
+                      <p className="text-gray-900 dark:text-white">{viewItem.expiryDate}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Cost price reveal for this modal */}
+              {cpSec.enabled && cpSec.isCostHidden && (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20">
+                  <Lock size={14} className="text-purple-600 dark:text-purple-400" />
+                  <span className="text-xs text-purple-700 dark:text-purple-300 flex-1">Cost price and margin are protected</span>
+                  <Button variant="secondary" size="sm" onClick={() => setCpPinModalOpen(true)}>Enter PIN</Button>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                {canEdit && (
+                  <Button variant="secondary" size="sm" icon={<Pencil size={13} />} onClick={() => { setViewModalOpen(false); openEdit(viewItem); }}>
+                    Edit
+                  </Button>
+                )}
+                <Button variant="ghost" size="sm" onClick={() => setViewModalOpen(false)}>Close</Button>
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
+
       {/* Bulk import modal */}
       <BulkImportModal
         open={importOpen}
@@ -757,6 +963,43 @@ export function ShopInventory() {
           setImportOpen(false);
         }}
       />
+
+      {/* PIN verification modal */}
+      <Modal open={cpPinModalOpen} onClose={() => { setCpPinModalOpen(false); setCpPinInput(''); }} title="Reveal Cost Prices" size="sm">
+        <form
+          className="space-y-4"
+          onSubmit={e => {
+            e.preventDefault();
+            if (cpSec.verifyPin(cpPinInput)) {
+              cpSec.reveal();
+              setCpPinModalOpen(false);
+              setCpPinInput('');
+              addToast('success', 'Cost prices revealed for this session');
+            } else {
+              addToast('error', 'Incorrect PIN');
+              setCpPinInput('');
+            }
+          }}
+        >
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-14 h-14 rounded-full bg-purple-50 dark:bg-purple-500/10 flex items-center justify-center text-purple-600 dark:text-purple-400">
+              <Lock size={24} />
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-400 text-center">Enter admin PIN to view cost prices</p>
+          </div>
+          <Input
+            label="Admin PIN"
+            type="password"
+            value={cpPinInput}
+            onChange={e => setCpPinInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            placeholder="Enter PIN"
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" type="button" onClick={() => { setCpPinModalOpen(false); setCpPinInput(''); }}>Cancel</Button>
+            <Button variant="primary" type="submit" disabled={cpPinInput.length < 4}>Verify & Reveal</Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

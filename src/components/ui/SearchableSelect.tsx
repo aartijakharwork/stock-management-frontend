@@ -65,7 +65,7 @@ export function SearchableSelect(props: SearchableSelectProps) {
   const {
     value, onChange, placeholder = 'Select…', emptyText = 'No matches',
     className = '', width = 'full', size = 'md', clearable = false,
-    renderOption, label, fullWidthPanel: _fullWidthPanel = true, disabled, id,
+    renderOption, label, fullWidthPanel = true, disabled, id,
   } = props;
 
   const [open, setOpen] = useState(false);
@@ -230,7 +230,7 @@ export function SearchableSelect(props: SearchableSelectProps) {
 
       {open && (
         <div
-          className={`absolute z-[60] mt-1 ${panelAlign === 'right' ? 'right-0' : 'left-0'} min-w-[16rem] rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden`}
+          className={`absolute z-[60] mt-1 ${panelAlign === 'right' ? 'right-0' : 'left-0'} ${fullWidthPanel ? 'w-full' : 'min-w-[16rem]'} rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden`}
         >
           <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-800">
             <Search size={14} className="text-gray-400 shrink-0" />

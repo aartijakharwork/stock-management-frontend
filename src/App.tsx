@@ -10,6 +10,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { PermissionProvider } from './context/PermissionContext';
 import { ToastProvider } from './context/ToastContext';
 import { ShopCatalogProvider } from './context/ShopCatalogContext';
+import { CatalogueProvider } from './context/CatalogueContext';
 import { ToastContainer } from './components/ui/Toast';
 import { isPathHidden, MVP_HIDE_COMMAND_PALETTE } from './config/mvp';
 
@@ -32,6 +33,7 @@ import { ShopReports } from './modules/shop/Reports';
 import { ShopExpenses } from './modules/shop/Expenses';
 import { ShopSuppliers } from './modules/shop/Suppliers';
 import { ShopCustomerLedger } from './modules/shop/CustomerLedger';
+import { ShopCatalogue } from './modules/shop/Catalogue';
 import { CommandPalette } from './components/ui/CommandPalette';
 
 import type { ReactNode } from 'react';
@@ -97,6 +99,7 @@ const router = createBrowserRouter([
         ),
         children: [
           { index: true, element: <ShopDashboard /> },
+          { path: 'catalogue', element: <ShopCatalogue /> },
           { path: 'inventory', element: <ShopInventory /> },
           { path: 'categories', element: <Navigate to="/shop/settings?tab=categories" replace /> },
           { path: 'billing', element: <ShopBilling /> },
@@ -122,11 +125,13 @@ export default function App() {
     <ThemeProvider>
       <AuthProvider>
         <ShopCatalogProvider>
-          <PermissionProvider>
-            <ToastProvider>
-              <RouterProvider router={router} />
-            </ToastProvider>
-          </PermissionProvider>
+          <CatalogueProvider>
+            <PermissionProvider>
+              <ToastProvider>
+                <RouterProvider router={router} />
+              </ToastProvider>
+            </PermissionProvider>
+          </CatalogueProvider>
         </ShopCatalogProvider>
       </AuthProvider>
     </ThemeProvider>

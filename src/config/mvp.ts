@@ -25,6 +25,7 @@ export const MVP_MODE = true;
 // navigation. Logic, routes, and components for hidden modules are untouched.
 export const MVP_VISIBLE_MODULES: AppModule[] = [
   'dashboard',
+  'catalogue',
   'billing',
   'inventory',
   'customers',

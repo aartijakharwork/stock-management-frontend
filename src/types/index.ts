@@ -20,7 +20,7 @@ export interface ProductCategory {
   name: string;
 }
 
-export type AppModule = 'dashboard' | 'inventory' | 'billing' | 'customers' | 'bills' | 'staff' | 'roles' | 'settings' | 'subscription' | 'expenses' | 'suppliers';
+export type AppModule = 'dashboard' | 'inventory' | 'billing' | 'customers' | 'bills' | 'staff' | 'roles' | 'settings' | 'subscription' | 'expenses' | 'suppliers' | 'catalogue';
 export type ModuleAction = 'view' | 'add' | 'edit' | 'delete';
 
 export interface ModulePermissions {
@@ -42,12 +42,13 @@ export interface RolePermissions {
   subscription: ModulePermissions;
   expenses?: ModulePermissions;
   suppliers?: ModulePermissions;
+  catalogue?: ModulePermissions;
 }
 
 export const DEFAULT_MODULE_PERMISSIONS: ModulePermissions = { view: false, add: false, edit: false, delete: false };
 export const ALL_MODULE_PERMISSIONS: ModulePermissions = { view: true, add: true, edit: true, delete: true };
 
-export const ALL_MODULES: AppModule[] = ['dashboard', 'inventory', 'billing', 'customers', 'bills', 'staff', 'roles', 'settings', 'subscription', 'expenses', 'suppliers'];
+export const ALL_MODULES: AppModule[] = ['dashboard', 'inventory', 'billing', 'customers', 'bills', 'staff', 'roles', 'settings', 'subscription', 'expenses', 'suppliers', 'catalogue'];
 export const ALL_ACTIONS: ModuleAction[] = ['view', 'add', 'edit', 'delete'];
 
 export interface InventoryItem {
@@ -71,11 +72,43 @@ export interface InventoryItem {
   batchNo?: string;
   imageUrl?: string;
   lastSoldAt?: string; // ISO — derived but cached for performance
+  // Catalogue fields
+  brand?: string;
+  partNumber?: string;
+  vehicleCompatibility?: string[];
+  subCategory?: string;
+  position?: 'front' | 'rear' | '';
+  side?: 'left' | 'right' | 'both' | '';
+  rackLocation?: string;
+  images?: string[];
 }
+
+export interface CatalogueItem {
+  id: string;
+  partName: string;
+  partNumber: string;
+  brand: string;
+  category: string;
+  subCategory?: string;
+  vehicleCompatibility: string[];
+  position?: 'front' | 'rear' | '';
+  side?: 'left' | 'right' | 'both' | '';
+  mrp: number;
+  sellingPrice?: number;
+  costPrice?: number;
+  rackLocation?: string;
+  images?: string[];
+  notes?: string;
+}
+
+export type DiscountType = 'percentage' | 'flat' | 'none';
 
 export interface CartItem extends InventoryItem {
   quantity: number;
   lineDiscount?: number; // flat ₹ off this line
+  appliedDiscountType?: DiscountType;
+  appliedDiscountValue?: number;
+  appliedDiscountAmount?: number;
 }
 
 export interface Customer {

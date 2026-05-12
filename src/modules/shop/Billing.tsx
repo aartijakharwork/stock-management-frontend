@@ -24,7 +24,7 @@ import { useQuickCustomers } from '../../hooks/useQuickCustomers';
 import { useShopProfile } from '../../hooks/useShopProfile';
 import { useShopCatalog } from '../../context/ShopCatalogContext';
 import { playSuccess, playError, playClick, hapticSuccess, hapticTap, hapticError } from '../../utils/feedback';
-import type { CartItem, InventoryItem, Bill, PaymentMethod, SplitTender } from '../../types';
+import type { CartItem, InventoryItem, Bill, PaymentMethod, SplitTender, DiscountType } from '../../types';
 
 type TenderMethod = PaymentMethod | 'udhaar';
 
@@ -45,6 +45,22 @@ const itemMrpSavings = (it: { mrp?: number; price: number; quantity?: number }) 
   hasMrpDiscount(it) ? (it.mrp! - it.price) * (it.quantity ?? 1) : 0;
 const totalMrpSavings = (items: { mrp?: number; price: number; quantity: number }[]) =>
   items.reduce((s, it) => s + itemMrpSavings(it), 0);
+
+const computeItemDiscount = (item: CartItem): number => {
+  const base = (item.mrp ?? item.price) * item.quantity;
+  if (item.appliedDiscountType === 'percentage') {
+    return Math.min(Math.round(base * (item.appliedDiscountValue ?? 0) / 100), base);
+  }
+  if (item.appliedDiscountType === 'flat') {
+    return Math.min(item.appliedDiscountValue ?? 0, base);
+  }
+  return 0;
+};
+
+const computeLineTotal = (item: CartItem): number => {
+  const base = (item.mrp ?? item.price) * item.quantity;
+  return Math.max(0, base - computeItemDiscount(item));
+};
 
 export function ShopBilling() {
   const { items: inventoryItems, allCategoryNames } = useShopCatalog();
@@ -118,7 +134,14 @@ export function ShopBilling() {
         }
         return prev.map(c => c.id === item.id ? { ...c, quantity: c.quantity + 1 } : c);
       }
-      return [...prev, { ...item, quantity: 1, lineDiscount: 0 }];
+      const hasSuggested = (item.discountPercent ?? 0) > 0;
+      return [...prev, {
+        ...item,
+        quantity: 1,
+        lineDiscount: 0,
+        appliedDiscountType: (hasSuggested ? 'percentage' : 'none') as DiscountType,
+        appliedDiscountValue: hasSuggested ? item.discountPercent! : 0,
+      }];
     });
     if (added) { playClick(); hapticTap(); }
   };
@@ -139,8 +162,17 @@ export function ShopBilling() {
 
   const removeFromCart = (id: string) => setCart(prev => prev.filter(c => c.id !== id));
 
-  const subtotal = cart.reduce((sum, c) => sum + c.price * c.quantity, 0);
+  const updateItemDiscount = (id: string, type: DiscountType, value: number) => {
+    setCart(prev => prev.map(c => c.id === id ? {
+      ...c,
+      appliedDiscountType: type,
+      appliedDiscountValue: type === 'none' ? 0 : Math.max(0, value),
+    } : c));
+  };
+
+  const subtotal = cart.reduce((sum, c) => sum + computeLineTotal(c), 0);
   const lineDiscountTotal = cart.reduce((sum, c) => sum + (c.lineDiscount ?? 0), 0);
+  const itemDiscountTotal = cart.reduce((sum, c) => sum + computeItemDiscount(c), 0);
   const billDiscountAmount = discountType === 'percent' ? Math.round(((subtotal - lineDiscountTotal) * discount) / 100) : discount;
   const beforeRound = Math.max(0, subtotal - lineDiscountTotal - billDiscountAmount);
   const rounded = roundOffEnabled ? Math.round(beforeRound) : beforeRound;
@@ -181,7 +213,7 @@ export function ShopBilling() {
     const customer = attachedCustomer;
     const typedName = customerName.trim();
     const typedPhone = customerPhone.trim();
-    const totalDiscount = lineDiscountTotal + billDiscountAmount;
+    const totalDiscount = itemDiscountTotal + lineDiscountTotal + billDiscountAmount;
     const allUdhaar = !splitMode && (paymentMethod as string) === 'udhaar';
     const tenders = splitMode ? splitTenders.filter(t => t.amount > 0) : undefined;
     const usesUdhaar = allUdhaar || (tenders?.some(t => t.method === 'udhaar') ?? false);
@@ -191,7 +223,7 @@ export function ShopBilling() {
       customerName: customer?.name || typedName || (typedPhone ? `Customer · ${typedPhone}` : 'Walk-in'),
       customerId: customer?.id,
       customerPhone: customer?.phone || typedPhone || undefined,
-      items: cart,
+      items: cart.map(c => ({ ...c, appliedDiscountAmount: computeItemDiscount(c) })),
       subtotal,
       discount: totalDiscount,
       total,
@@ -310,7 +342,11 @@ export function ShopBilling() {
     const lines = [
       `*${profile.name}* — Bill ${formatInvoiceNo(receipt.id, receipt.date)}`,
       `Date: ${formatDate(receipt.date)}`,
-      ...receipt.items.map(i => `• ${i.name} × ${i.quantity} = ${formatCurrency(i.price * i.quantity)}`),
+      ...receipt.items.map(i => {
+        const lt = computeLineTotal(i);
+        const da = i.appliedDiscountAmount ?? 0;
+        return `• ${i.name} × ${i.quantity} = ${formatCurrency(lt)}${da > 0 ? ` (disc −${formatCurrency(da)})` : ''}`;
+      }),
       `*Total: ${formatCurrency(Math.abs(receipt.total))}*`,
       receipt.isUdhaar ? '⚠ Saved as Udhaar (unpaid)' : `Paid via ${receipt.paymentMethod?.toUpperCase() ?? 'Split'}`,
     ];
@@ -614,29 +650,120 @@ export function ShopBilling() {
       )}
 
       {/* Confirm-before-print modal */}
-      <Modal open={confirmOpen} onClose={() => setConfirmOpen(false)} title={mode === 'return' ? 'Confirm return' : 'Confirm bill'} size="sm">
+      <Modal open={confirmOpen} onClose={() => setConfirmOpen(false)} title={mode === 'return' ? 'Confirm return' : 'Confirm bill'} size="lg">
         <form
-          className="space-y-3"
+          className="space-y-4"
           onSubmit={e => {
             e.preventDefault();
             finalizeBill();
           }}
         >
           <p className="text-sm text-gray-700 dark:text-gray-300">
-            {mode === 'return' ? 'A credit note will be created and stock reversed.' : 'Charge and print this bill?'}
+            {mode === 'return' ? 'A credit note will be created and stock reversed.' : 'Review items and adjust discounts before generating the bill.'}
           </p>
+
+          {/* Item list with editable discounts */}
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <div className="hidden sm:grid sm:grid-cols-[1fr_56px_80px_200px_90px] gap-3 px-4 py-2.5 bg-gray-100 dark:bg-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-500">
+              <span>Item</span>
+              <span className="text-right">Qty</span>
+              <span className="text-right">Price</span>
+              <span className="text-center">Applied Discount</span>
+              <span className="text-right">Line Total</span>
+            </div>
+            <ul className="divide-y divide-gray-200 dark:divide-gray-800">
+              {cart.map(item => {
+                const basePrice = item.mrp ?? item.price;
+                const discountAmt = computeItemDiscount(item);
+                const lineTotal = computeLineTotal(item);
+                const dType = item.appliedDiscountType ?? 'none';
+                const dValue = item.appliedDiscountValue ?? 0;
+                return (
+                  <li key={item.id} className="px-4 py-3">
+                    <div className="sm:grid sm:grid-cols-[1fr_56px_80px_200px_90px] sm:gap-3 sm:items-center">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{item.name}</p>
+                        {item.sku && <p className="text-xs text-gray-400 mt-0.5">{item.sku}</p>}
+                      </div>
+                      <p className="text-sm tabular-nums text-right text-gray-700 dark:text-gray-300 hidden sm:block">{item.quantity}</p>
+                      <p className="text-sm tabular-nums text-right text-gray-700 dark:text-gray-300 hidden sm:block">{formatCurrency(basePrice)}</p>
+
+                      {/* Discount controls */}
+                      <div className="mt-2 sm:mt-0 flex items-center gap-1.5 justify-center">
+                        <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                          {(['percentage', 'flat', 'none'] as const).map(t => (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => updateItemDiscount(item.id, t, t === 'percentage' ? (item.discountPercent ?? 0) : 0)}
+                              className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                dType === t
+                                  ? 'bg-emerald-600 text-white'
+                                  : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'
+                              }`}
+                            >
+                              {t === 'percentage' ? '%' : t === 'flat' ? '₹' : 'No'}
+                            </button>
+                          ))}
+                        </div>
+                        {dType !== 'none' && (
+                          <input
+                            type="number"
+                            value={dValue || ''}
+                            onChange={e => updateItemDiscount(item.id, dType, Number(e.target.value))}
+                            className="w-20 h-8 text-sm text-right rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2 tabular-nums focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
+                            placeholder={dType === 'percentage' ? '%' : '₹'}
+                            min={0}
+                            max={dType === 'percentage' ? 100 : undefined}
+                          />
+                        )}
+                      </div>
+
+                      <p className="text-sm font-semibold tabular-nums text-right text-gray-900 dark:text-white hidden sm:block">{formatCurrency(lineTotal)}</p>
+                    </div>
+                    {/* Mobile summary row */}
+                    <div className="flex items-center justify-between mt-1.5 sm:hidden text-xs">
+                      <span className="text-gray-500">{item.quantity} × {formatCurrency(basePrice)}</span>
+                      {discountAmt > 0 && <span className="text-emerald-600">−{formatCurrency(discountAmt)}</span>}
+                      <span className="font-semibold tabular-nums">{formatCurrency(lineTotal)}</span>
+                    </div>
+                    {discountAmt > 0 && (
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 hidden sm:block sm:text-right">
+                        −{formatCurrency(discountAmt)} discount
+                      </p>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          {/* Summary */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3 bg-gray-50 dark:bg-gray-800/40 space-y-1.5">
             <div className="flex justify-between text-sm"><span className="text-gray-500">Customer</span><span className="font-medium">{selectedCustomer?.name ?? 'Walk-in'}</span></div>
             <div className="flex justify-between text-sm"><span className="text-gray-500">Items</span><span className="font-medium">{itemCount}</span></div>
-            {totalMrpSavings(cart) > 0 && (
-              <>
-                <div className="flex justify-between text-sm"><span className="text-gray-500">MRP total</span><span className="font-medium tabular-nums line-through text-gray-400">{formatCurrency(Math.abs(total) + totalMrpSavings(cart))}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-gray-500">You saved</span><span className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">− {formatCurrency(totalMrpSavings(cart))}</span></div>
-              </>
+            {itemDiscountTotal > 0 && (
+              <div className="flex justify-between text-sm"><span className="text-emerald-600">Item discounts</span><span className="font-medium tabular-nums text-emerald-600">−{formatCurrency(itemDiscountTotal)}</span></div>
             )}
-            <div className="flex justify-between text-sm"><span className="text-gray-500">Total</span><span className="font-bold text-lg tabular-nums">{formatCurrency(Math.abs(total))}</span></div>
+            {lineDiscountTotal > 0 && (
+              <div className="flex justify-between text-sm"><span className="text-emerald-600">Line discounts</span><span className="font-medium tabular-nums text-emerald-600">−{formatCurrency(lineDiscountTotal)}</span></div>
+            )}
+            {billDiscountAmount > 0 && (
+              <div className="flex justify-between text-sm"><span className="text-emerald-600">Bill discount</span><span className="font-medium tabular-nums text-emerald-600">−{formatCurrency(billDiscountAmount)}</span></div>
+            )}
+            {(() => { const t = gstBreakdown(Math.abs(total)); return (
+              <>
+                <div className="flex justify-between text-[11px]"><span className="text-gray-400">CGST @ 9%</span><span className="tabular-nums text-gray-500">{formatCurrency(t.cgst)}</span></div>
+                <div className="flex justify-between text-[11px]"><span className="text-gray-400">SGST @ 9%</span><span className="tabular-nums text-gray-500">{formatCurrency(t.sgst)}</span></div>
+              </>
+            ); })()}
+            <div className="flex justify-between text-sm border-t border-gray-200 dark:border-gray-700 pt-1.5 mt-1.5">
+              <span className="text-gray-500">Total</span>
+              <span className="font-bold text-lg tabular-nums">{formatCurrency(Math.abs(total))}</span>
+            </div>
             <div className="flex justify-between text-sm"><span className="text-gray-500">Payment</span><span className="font-medium uppercase">{splitMode ? 'Split' : paymentMethod}</span></div>
           </div>
+
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" type="button" onClick={() => setConfirmOpen(false)}>Cancel</Button>
             <Button variant="primary" type="submit">Confirm & {mode === 'return' ? 'Refund' : 'Print'}</Button>
@@ -767,25 +894,29 @@ export function ShopBilling() {
                   </div>
                   <div className="my-1 border-t border-dashed border-gray-400" />
                   <ul className="space-y-1.5">
-                    {receipt.items.map(it => (
-                      <li key={it.id} className="text-[11px]">
-                        <p className="truncate font-semibold">{it.name}</p>
-                        <div className="flex justify-between tabular-nums">
-                          <span className="flex-1 text-gray-500">&nbsp;</span>
-                          <span className="w-10 text-right">{it.quantity}</span>
-                          <span className="w-16 text-right">
-                            {hasMrpDiscount(it) && (
-                              <span className="line-through text-gray-400 mr-1">{it.mrp!.toLocaleString('en-IN')}</span>
-                            )}
-                            {it.price.toLocaleString('en-IN')}
-                          </span>
-                          <span className="w-16 text-right">{(it.price * it.quantity - (it.lineDiscount ?? 0)).toLocaleString('en-IN')}</span>
-                        </div>
-                        {(it.lineDiscount ?? 0) > 0 && (
-                          <p className="text-[10px] text-right text-emerald-700">− line disc {it.lineDiscount}</p>
-                        )}
-                      </li>
-                    ))}
+                    {receipt.items.map(it => {
+                      const base = it.mrp ?? it.price;
+                      const lineAmt = computeLineTotal(it);
+                      return (
+                        <li key={it.id} className="text-[11px]">
+                          <p className="truncate font-semibold">{it.name}</p>
+                          <div className="flex justify-between tabular-nums">
+                            <span className="flex-1 text-gray-500">&nbsp;</span>
+                            <span className="w-10 text-right">{it.quantity}</span>
+                            <span className="w-16 text-right">{base.toLocaleString('en-IN')}</span>
+                            <span className="w-16 text-right">{lineAmt.toLocaleString('en-IN')}</span>
+                          </div>
+                          {(it.appliedDiscountAmount ?? 0) > 0 && (
+                            <p className="text-[10px] text-right text-emerald-700">
+                              − {it.appliedDiscountType === 'percentage' ? `${it.appliedDiscountValue}%` : `₹${it.appliedDiscountAmount}`} disc {it.appliedDiscountAmount!.toLocaleString('en-IN')}
+                            </p>
+                          )}
+                          {(it.lineDiscount ?? 0) > 0 && (
+                            <p className="text-[10px] text-right text-emerald-700">− line disc {it.lineDiscount}</p>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                   <div className="my-2 border-t border-dashed border-gray-400" />
                   <div className="space-y-0.5 text-[11px] tabular-nums">

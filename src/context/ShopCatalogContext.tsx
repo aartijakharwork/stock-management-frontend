@@ -14,7 +14,7 @@ import type { InventoryItem, ProductCategory } from '../types';
 // v2: schema bumped — items now carry mrp + discountPercent. Old v1 caches
 // without these fields are ignored so mock data with realistic MRP/discount
 // shows up on next load.
-const STORAGE_KEY = 'shopmanager.catalog.v2';
+const STORAGE_KEY = 'shopmanager.catalog.v3';
 
 function cloneItems(items: InventoryItem[]): InventoryItem[] {
   return JSON.parse(JSON.stringify(items)) as InventoryItem[];
