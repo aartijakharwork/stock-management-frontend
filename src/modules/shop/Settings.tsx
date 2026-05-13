@@ -1,8 +1,8 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Save, Download, HardDrive, KeyRound, LogOut, Store, ShieldCheck, Eye, EyeOff,
   Wallet, Plus, IndianRupee, FileText, Bell, Plug, Settings as Cog, AlertTriangle,
-  Image as ImageIcon, Trash2, Printer, Eye as EyeIcon, Tags,
+  Image as ImageIcon, Trash2, Printer, Eye as EyeIcon, Tags, Monitor,
   type LucideIcon,
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
@@ -120,7 +120,48 @@ export function ShopSettings() {
     addToast('success', 'Invoice template saved');
   };
 
-  const handleLogout = () => { logout(); navigate('/auth/login'); };
+  const handleLogout = async () => { await logout(); navigate('/auth/login'); };
+
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [cpCurrent, setCpCurrent] = useState('');
+  const [cpNew, setCpNew] = useState('');
+  const [cpConfirm, setCpConfirm] = useState('');
+  const [cpError, setCpError] = useState('');
+  const [cpSubmitting, setCpSubmitting] = useState(false);
+
+  interface SessionInfo { id: string; createdAt: string; expiresAt: string; current: boolean; }
+  const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [revokingOthers, setRevokingOthers] = useState(false);
+
+  const loadSessions = useCallback(async () => {
+    const { api: apiCall } = await import('../../api/client');
+    const res = await apiCall('/auth/sessions');
+    if (res.ok) setSessions(await res.json());
+  }, []);
+
+  useEffect(() => { loadSessions(); }, [loadSessions]);
+
+  const handleChangePassword = async () => {
+    if (!cpCurrent) { setCpError('Current password is required'); return; }
+    if (cpNew.length < 6) { setCpError('New password must be at least 6 characters'); return; }
+    if (cpNew !== cpConfirm) { setCpError('Passwords do not match'); return; }
+    setCpError('');
+    setCpSubmitting(true);
+    const { api: apiCall } = await import('../../api/client');
+    const res = await apiCall('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword: cpCurrent, newPassword: cpNew }),
+    });
+    setCpSubmitting(false);
+    if (res.ok) {
+      addToast('success', 'Password updated');
+      setShowChangePassword(false);
+      setCpCurrent(''); setCpNew(''); setCpConfirm('');
+    } else {
+      const data = await res.json();
+      setCpError(data.error || 'Failed to change password');
+    }
+  };
 
   const tabStripItems = useMemo(
     () => TABS.map(({ id, label, icon: Icon }) => ({ id, label, icon: <Icon size={14} /> })),
@@ -671,9 +712,78 @@ export function ShopSettings() {
               <p className="text-xs text-gray-500 font-mono">{user?.email}</p>
             </div>
             <div className="mt-5 flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-800">
-              <Button variant="secondary" icon={<KeyRound size={14} />} size="sm" onClick={() => addToast('info', 'Password change UI')}>Change password</Button>
+              <Button variant="secondary" icon={<KeyRound size={14} />} size="sm" onClick={() => setShowChangePassword(!showChangePassword)}>
+                {showChangePassword ? 'Cancel' : 'Change password'}
+              </Button>
               <Button variant="ghost" icon={<LogOut size={14} />} size="sm" onClick={handleLogout}>Sign out</Button>
             </div>
+            {showChangePassword && (
+              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-800 space-y-3 max-w-sm">
+                <Input label="Current password" type="password" value={cpCurrent} onChange={e => setCpCurrent(e.target.value)} placeholder="Enter current password" />
+                <Input label="New password" type="password" value={cpNew} onChange={e => setCpNew(e.target.value)} placeholder="Min 6 characters" />
+                <Input label="Confirm new password" type="password" value={cpConfirm} onChange={e => setCpConfirm(e.target.value)} placeholder="Re-enter new password" />
+                {cpError && <p className="text-sm text-red-600 dark:text-red-400">{cpError}</p>}
+                <Button variant="primary" size="sm" disabled={cpSubmitting} onClick={handleChangePassword}>
+                  {cpSubmitting ? 'Saving...' : 'Update password'}
+                </Button>
+              </div>
+            )}
+          </Card>
+
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Active sessions</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Devices where you are currently signed in.</p>
+              </div>
+              {sessions.length > 1 && (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  icon={<Trash2 size={14} />}
+                  disabled={revokingOthers}
+                  onClick={async () => {
+                    setRevokingOthers(true);
+                    const { api: apiCall } = await import('../../api/client');
+                    const res = await apiCall('/auth/sessions/revoke-others', { method: 'POST' });
+                    setRevokingOthers(false);
+                    if (res.ok) {
+                      const data = await res.json();
+                      addToast('success', 'Sessions revoked', `${data.revokedCount} session(s) signed out.`);
+                      loadSessions();
+                    } else {
+                      addToast('error', 'Failed', 'Could not revoke sessions.');
+                    }
+                  }}
+                >
+                  {revokingOthers ? 'Revoking...' : 'Sign out other devices'}
+                </Button>
+              )}
+            </div>
+            {sessions.length === 0 ? (
+              <p className="text-sm text-gray-500">No sessions found.</p>
+            ) : (
+              <div className="space-y-2">
+                {sessions.map(s => (
+                  <div key={s.id} className="flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
+                    <div className="flex items-center gap-3">
+                      <Monitor size={16} className="text-gray-400 shrink-0" />
+                      <div>
+                        <p className="text-sm text-gray-900 dark:text-white">
+                          Session {s.current && <Badge variant="success">Current</Badge>}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Created {new Date(s.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-400">
+                      Expires {new Date(s.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
 
           <Card className="border-red-200 dark:border-red-500/30">

@@ -1,15 +1,14 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Plus, Shield, Trash2, Save, Check, X as XIcon } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Input';
 import { Badge } from '../../components/ui/Badge';
-import { roles as initialRoles, staffMembers } from '../../data/shop-dummy';
-import { generateId } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { usePermissions } from '../../context/PermissionContext';
-import type { Role, RolePermissions, AppModule, ModuleAction } from '../../types';
+import { api } from '../../api/client';
+import type { Role, RolePermissions, AppModule, ModuleAction, StaffMember } from '../../types';
 
 const MODULE_META: { key: AppModule; label: string }[] = [
   { key: 'dashboard', label: 'Dashboard' },
@@ -53,7 +52,8 @@ function PermissionToggle({ checked, onChange, disabled }: { checked: boolean; o
 }
 
 export function ShopRoles() {
-  const [rolesList, setRolesList] = useState<Role[]>(initialRoles);
+  const [rolesList, setRolesList] = useState<Role[]>([]);
+  const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
   const [addOpen, setAddOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Role | null>(null);
   const [newName, setNewName] = useState('');
@@ -65,11 +65,22 @@ export function ShopRoles() {
   const canAdd = can('roles', 'add');
   const canDelete = can('roles', 'delete');
 
+  const loadData = useCallback(async () => {
+    const [rolesRes, staffRes] = await Promise.all([
+      api('/shop/roles'),
+      api('/shop/staff'),
+    ]);
+    if (rolesRes.ok) setRolesList(await rolesRes.json());
+    if (staffRes.ok) setStaffMembers(await staffRes.json());
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
   const memberCount = useMemo(() => {
     const map = new Map<string, number>();
     for (const s of staffMembers) map.set(s.roleId, (map.get(s.roleId) ?? 0) + 1);
     return map;
-  }, []);
+  }, [staffMembers]);
 
   const togglePermission = (roleId: string, module: AppModule, action: ModuleAction) => {
     if (!canEdit) return;
@@ -96,25 +107,48 @@ export function ShopRoles() {
     }));
   };
 
-  const handleSave = (roleId: string) => {
+  const handleSave = async (roleId: string) => {
     const role = rolesList.find(r => r.id === roleId);
-    addToast('success', 'Role saved', `Permissions for ${role?.name} updated.`);
+    if (!role) return;
+    const res = await api(`/shop/roles/${roleId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name: role.name, permissions: role.permissions }),
+    });
+    if (res.ok) {
+      addToast('success', 'Role saved', `Permissions for ${role.name} updated.`);
+    } else {
+      addToast('error', 'Error', 'Could not save role.');
+    }
   };
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!newName.trim()) return;
-    const newRole: Role = { id: generateId(), name: newName.trim(), permissions: { ...emptyPermissions } };
-    setRolesList(prev => [...prev, newRole]);
-    setNewName('');
-    setAddOpen(false);
-    addToast('success', 'Role created');
-    setExpandedRole(newRole.id);
+    const res = await api('/shop/roles', {
+      method: 'POST',
+      body: JSON.stringify({ name: newName.trim(), permissions: emptyPermissions }),
+    });
+    if (res.ok) {
+      const newRole = await res.json();
+      setRolesList(prev => [...prev, newRole]);
+      setNewName('');
+      setAddOpen(false);
+      addToast('success', 'Role created');
+      setExpandedRole(newRole.id);
+    } else {
+      const err = await res.json();
+      addToast('error', 'Error', err.error || 'Could not create role.');
+    }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!confirmDelete) return;
-    setRolesList(prev => prev.filter(r => r.id !== confirmDelete.id));
-    addToast('success', 'Role deleted');
+    const res = await api(`/shop/roles/${confirmDelete.id}`, { method: 'DELETE' });
+    if (res.ok) {
+      setRolesList(prev => prev.filter(r => r.id !== confirmDelete.id));
+      addToast('success', 'Role deleted');
+    } else {
+      addToast('error', 'Error', 'Could not delete role.');
+    }
     setConfirmDelete(null);
   };
 

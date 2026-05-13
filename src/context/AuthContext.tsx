@@ -1,100 +1,87 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
-import type { AuthUser, UserRole, RolePermissions } from '../types';
-import { roles as dummyRoles } from '../data/shop-dummy';
+import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
+import type { AuthUser, RolePermissions } from '../types';
+import { api, setAccessToken, getAccessToken } from '../api/client';
 
 interface AuthContextValue {
   user: AuthUser | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string, role: UserRole) => boolean;
-  signup: (data: { shopName: string; ownerName: string; email: string; phone: string; password: string }) => boolean;
-  logout: () => void;
+  loading: boolean;
+  login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  logout: () => Promise<void>;
   getStaffPermissions: () => RolePermissions | null;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-const DEMO_USERS: Record<UserRole, AuthUser> = {
-  admin: {
-    id: 'admin-1',
-    name: 'Platform Admin',
-    email: 'admin@shopmanager.in',
-    phone: '9800000001',
-    role: 'admin',
-  },
-  shopkeeper: {
-    id: 'shop-1',
-    name: 'Kumar Singh',
-    email: 'kumar@autoparts.in',
-    phone: '9876543200',
-    role: 'shopkeeper',
-    shopId: 'S001',
-    shopName: 'Kumar Auto Parts',
-  },
-  staff: {
-    id: 'staff-1',
-    name: 'Rahul Mehta',
-    email: 'rahul@kumarauto.in',
-    phone: '9876543220',
-    role: 'staff',
-    shopId: 'S001',
-    shopName: 'Kumar Auto Parts',
-    staffRoleId: '1',
-  },
-};
+function mapApiUser(data: Record<string, unknown>): AuthUser {
+  return {
+    id: data.id as string,
+    name: data.name as string,
+    email: data.email as string,
+    phone: (data.phone as string) || '',
+    role: data.globalRole === 'super_admin' ? 'admin' : (data.membershipRole as string) === 'staff' ? 'staff' : 'shopkeeper',
+    shopId: data.shopId as string | undefined,
+    shopName: data.shopName as string | undefined,
+    staffRoleId: data.staffRoleId as string | undefined,
+  };
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    const saved = localStorage.getItem('shopmanager.auth');
-    if (saved) {
-      try { return JSON.parse(saved); } catch { return null; }
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = useState(true);
+  const staffPermissionsRef = useRef<RolePermissions | null>(null);
+
+  useEffect(() => {
+    if (!getAccessToken()) {
+      setLoading(false);
+      return;
     }
-    return null;
-  });
-
-  const login = useCallback((email: string, _password: string, role: UserRole): boolean => {
-    if (!email || !_password) return false;
-    const allowedRoles: UserRole[] = ['shopkeeper', 'staff'];
-    if (!allowedRoles.includes(role)) return false;
-    const demoUser = DEMO_USERS[role];
-    const loggedIn = { ...demoUser, email };
-    setUser(loggedIn);
-    localStorage.setItem('shopmanager.auth', JSON.stringify(loggedIn));
-    return true;
+    api('/auth/me')
+      .then(async (res) => {
+        if (res.ok) {
+          const data = await res.json();
+          setUser(mapApiUser(data));
+          if (data.permissions) {
+            staffPermissionsRef.current = data.permissions as RolePermissions;
+          }
+        } else {
+          setAccessToken(null);
+        }
+      })
+      .catch(() => setAccessToken(null))
+      .finally(() => setLoading(false));
   }, []);
 
-  const signup = useCallback((data: { shopName: string; ownerName: string; email: string; phone: string; password: string }): boolean => {
-    if (!data.shopName || !data.ownerName || !data.email || !data.password) return false;
-    const newUser: AuthUser = {
-      id: 'shop-new-' + Date.now(),
-      name: data.ownerName,
-      email: data.email,
-      phone: data.phone,
-      role: 'shopkeeper',
-      shopId: 'S-NEW-' + Date.now(),
-      shopName: data.shopName,
-    };
-    setUser(newUser);
-    localStorage.setItem('shopmanager.auth', JSON.stringify(newUser));
-    return true;
+  const login = useCallback(async (email: string, password: string) => {
+    const res = await api('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, intent: 'shop' }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) return { ok: false, error: data.error || 'Login failed' };
+
+    setAccessToken(data.accessToken);
+    setUser(mapApiUser(data.user));
+    if (data.user.permissions) {
+      staffPermissionsRef.current = data.user.permissions as RolePermissions;
+    }
+    return { ok: true };
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    await api('/auth/logout', { method: 'POST' }).catch(() => {});
+    setAccessToken(null);
     setUser(null);
-    localStorage.removeItem('shopmanager.auth');
+    staffPermissionsRef.current = null;
   }, []);
 
   const getStaffPermissions = useCallback((): RolePermissions | null => {
-    if (!user || user.role !== 'staff') return null;
-    if (user.staffRoleId) {
-      const role = dummyRoles.find(r => r.id === user.staffRoleId);
-      return role?.permissions ?? null;
-    }
-    // Saved sessions without staffRoleId still need a role matrix (e.g. Cashier).
-    return dummyRoles.find(r => r.id === '2')?.permissions ?? null;
-  }, [user]);
+    return staffPermissionsRef.current;
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, login, signup, logout, getStaffPermissions }}>
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, loading, login, logout, getStaffPermissions }}>
       {children}
     </AuthContext.Provider>
   );

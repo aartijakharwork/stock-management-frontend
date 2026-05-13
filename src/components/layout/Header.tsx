@@ -87,8 +87,8 @@ export function Header({ onMenuClick }: HeaderProps) {
   const dismissNotif = (id: string) => setNotifications(prev => prev.filter(n => n.id !== id));
   const clearAllNotifs = () => setNotifications([]);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/auth/login');
   };
 

@@ -17,8 +17,10 @@ import { isPathHidden, MVP_HIDE_COMMAND_PALETTE } from './config/mvp';
 import { ShopLayout } from './components/layout/ShopLayout';
 
 import { Login } from './pages/auth/Login';
-import { Signup } from './pages/auth/Signup';
 import { ForgotPassword } from './pages/auth/ForgotPassword';
+import { ResetPassword } from './pages/auth/ResetPassword';
+import { AcceptInvite } from './pages/auth/AcceptInvite';
+import { JoinStaff } from './pages/auth/JoinStaff';
 
 import { ShopDashboard } from './modules/shop/Dashboard';
 import { ShopInventory } from './modules/shop/Inventory';
@@ -38,15 +40,21 @@ import { CommandPalette } from './components/ui/CommandPalette';
 
 import type { ReactNode } from 'react';
 
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
+      <div className="w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
+
 function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
+  if (loading) return <LoadingScreen />;
   if (!isAuthenticated) return <Navigate to="/auth/login" replace />;
   return <>{children}</>;
 }
 
-// In MVP mode, redirect any module that's been hidden from nav back to the
-// dashboard. The route + component are still mounted-on-demand for power
-// users (set MVP_MODE = false in src/config/mvp.ts).
 function MvpGuard({ children }: { children: ReactNode }) {
   const location = useLocation();
   if (isPathHidden(location.pathname)) return <Navigate to="/shop" replace />;
@@ -54,12 +62,12 @@ function MvpGuard({ children }: { children: ReactNode }) {
 }
 
 function AuthRedirect({ children }: { children: ReactNode }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
+  if (loading) return <LoadingScreen />;
   if (isAuthenticated) return <Navigate to="/shop" replace />;
   return <>{children}</>;
 }
 
-/** Renders matched route + global overlays. Must sit under RouterProvider so hooks work. */
 function GlobalShell() {
   return (
     <>
@@ -70,7 +78,6 @@ function GlobalShell() {
   );
 }
 
-/** Unknown URLs under /shop stay in the app; anything else goes to login. */
 function CatchAllRedirect() {
   const location = useLocation();
   if (location.pathname.startsWith('/shop')) {
@@ -79,15 +86,16 @@ function CatchAllRedirect() {
   return <Navigate to="/auth/login" replace />;
 }
 
-// Data router enables useBlocker (e.g. UnsavedChangesGuard in Settings).
 const router = createBrowserRouter([
   {
     element: <GlobalShell />,
     children: [
       { path: '/', element: <Navigate to="/auth/login" replace /> },
       { path: '/auth/login', element: <AuthRedirect><Login /></AuthRedirect> },
-      { path: '/auth/signup', element: <AuthRedirect><Signup /></AuthRedirect> },
       { path: '/auth/forgot-password', element: <ForgotPassword /> },
+      { path: '/auth/reset-password', element: <ResetPassword /> },
+      { path: '/auth/invite/:token', element: <AcceptInvite /> },
+      { path: '/auth/join/:token', element: <JoinStaff /> },
       {
         path: '/shop',
         element: (

@@ -1,47 +1,33 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Store, ArrowLeft, Mail, KeyRound } from 'lucide-react';
+import { Store, ArrowLeft, Mail } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { useToast } from '../../context/ToastContext';
-
-type Step = 'email' | 'otp' | 'reset';
+import { api } from '../../api/client';
 
 export function ForgotPassword() {
-  const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
-  const { addToast } = useToast();
+  const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSendOtp = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) { setError('Email or phone is required'); return; }
+    if (!email.trim()) { setError('Email is required'); return; }
     setError('');
-    addToast('success', 'OTP sent', `Verification code sent to ${email}`);
-    setStep('otp');
-  };
+    setSubmitting(true);
 
-  const handleVerifyOtp = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (otp.length < 4) { setError('Enter a valid OTP'); return; }
-    setError('');
-    setStep('reset');
-  };
-
-  const handleReset = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (password.length < 6) { setError('Min 6 characters'); return; }
-    if (password !== confirmPassword) { setError('Passwords do not match'); return; }
-    setError('');
-    addToast('success', 'Password reset', 'You can now sign in with your new password');
-    setStep('email');
-    setEmail('');
-    setOtp('');
-    setPassword('');
-    setConfirmPassword('');
+    try {
+      await api('/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({ email, intent: 'shop' }),
+      });
+      setSubmitted(true);
+    } catch {
+      setError('Something went wrong. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -52,79 +38,42 @@ export function ForgotPassword() {
             <Store size={28} className="text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            {step === 'email' && 'Forgot password?'}
-            {step === 'otp' && 'Enter verification code'}
-            {step === 'reset' && 'Set new password'}
+            {submitted ? 'Check your email' : 'Forgot password?'}
           </h1>
           <p className="mt-1 text-sm text-gray-500">
-            {step === 'email' && "No worries. We'll send you a reset code."}
-            {step === 'otp' && `We sent a code to ${email}`}
-            {step === 'reset' && 'Choose a strong password for your account.'}
+            {submitted
+              ? `If an account exists for ${email}, we've sent a reset link.`
+              : "Enter your email and we'll send you a reset link."}
           </p>
         </div>
 
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6 shadow-sm">
-          {step === 'email' && (
-            <form onSubmit={handleSendOtp} className="space-y-4">
+          {!submitted ? (
+            <form onSubmit={handleSubmit} className="space-y-4">
               <Input
-                label="Email or Phone"
+                label="Email"
+                type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="Enter your registered email or phone"
+                placeholder="Enter your registered email"
                 error={error}
               />
-              <Button type="submit" variant="primary" size="lg" className="w-full" icon={<Mail size={16} />}>
-                Send reset code
+              <Button type="submit" variant="primary" size="lg" className="w-full" icon={<Mail size={16} />} disabled={submitting}>
+                {submitting ? 'Sending...' : 'Send reset link'}
               </Button>
             </form>
-          )}
-
-          {step === 'otp' && (
-            <form onSubmit={handleVerifyOtp} className="space-y-4">
-              <Input
-                label="Verification Code"
-                value={otp}
-                onChange={e => setOtp(e.target.value)}
-                placeholder="Enter 6-digit code"
-                error={error}
-                inputMode="numeric"
-                maxLength={6}
-              />
-              <Button type="submit" variant="primary" size="lg" className="w-full">
-                Verify code
-              </Button>
-              <button
-                type="button"
-                onClick={() => addToast('info', 'OTP resent', `New code sent to ${email}`)}
-                className="w-full text-center text-sm text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 font-medium"
-              >
-                Resend code
-              </button>
-            </form>
-          )}
-
-          {step === 'reset' && (
-            <form onSubmit={handleReset} className="space-y-4">
-              <Input
-                label="New Password"
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="Min 6 characters"
-                error={error && password.length < 6 ? error : undefined}
-              />
-              <Input
-                label="Confirm Password"
-                type="password"
-                value={confirmPassword}
-                onChange={e => setConfirmPassword(e.target.value)}
-                placeholder="Re-enter password"
-                error={error && password !== confirmPassword ? error : undefined}
-              />
-              <Button type="submit" variant="primary" size="lg" className="w-full" icon={<KeyRound size={16} />}>
-                Reset password
-              </Button>
-            </form>
+          ) : (
+            <div className="text-center py-4">
+              <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center">
+                <Mail size={20} className="text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Didn't receive the email? Check your spam folder or{' '}
+                <button onClick={() => setSubmitted(false)} className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 font-medium">
+                  try again
+                </button>.
+              </p>
+            </div>
           )}
         </div>
 

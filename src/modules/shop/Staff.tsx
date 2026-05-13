@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { UserPlus, Pencil, Trash2, Users, Link2, Copy, Mail, Clock } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card, StatCard } from '../../components/ui/Card';
@@ -10,15 +10,11 @@ import { SearchInput } from '../../components/ui/SearchInput';
 import { Toggle } from '../../components/ui/Toggle';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Badge } from '../../components/ui/Badge';
-import { staffMembers as initialStaff, roles, staffInvites as initialInvites } from '../../data/shop-dummy';
-import { generateId } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { usePermissions } from '../../context/PermissionContext';
 import { usePagination } from '../../hooks/usePagination';
-import type { StaffMember, StaffInvite } from '../../types';
-
-const roleFilterOptions = [{ label: 'All roles', value: '' }, ...roles.map(r => ({ label: r.name, value: r.id }))];
-const roleFormOptions = roles.map(r => ({ label: r.name, value: r.id }));
+import { api } from '../../api/client';
+import type { StaffMember, StaffInvite, Role } from '../../types';
 
 function Avatar({ name }: { name: string }) {
   return (
@@ -29,8 +25,9 @@ function Avatar({ name }: { name: string }) {
 }
 
 export function ShopStaff() {
-  const [staff, setStaff] = useState<StaffMember[]>(initialStaff);
-  const [invites, setInvites] = useState<StaffInvite[]>(initialInvites);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [invites, setInvites] = useState<StaffInvite[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -39,12 +36,32 @@ export function ShopStaff() {
   const [form, setForm] = useState({ name: '', email: '', phone: '', roleId: '', active: true });
   const [inviteForm, setInviteForm] = useState({ name: '', email: '', phone: '', roleId: '' });
   const [tab, setTab] = useState<'members' | 'invites'>('members');
+  const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
   const { can } = usePermissions();
 
   const canAdd = can('staff', 'add');
   const canEdit = can('staff', 'edit');
   const canDelete = can('staff', 'delete');
+
+  const loadData = useCallback(async () => {
+    const [staffRes, invitesRes, rolesRes] = await Promise.all([
+      api('/shop/staff'),
+      api('/shop/staff/invites'),
+      api('/shop/roles'),
+    ]);
+    if (staffRes.ok) setStaff(await staffRes.json());
+    if (invitesRes.ok) setInvites(await invitesRes.json());
+    if (rolesRes.ok) setRoles(await rolesRes.json());
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const roleFilterOptions = useMemo(() => [
+    { label: 'All roles', value: '' },
+    ...roles.map(r => ({ label: r.name, value: r.id })),
+  ], [roles]);
+  const roleFormOptions = useMemo(() => roles.map(r => ({ label: r.name, value: r.id })), [roles]);
 
   const activeCount = staff.filter(s => s.active).length;
 
@@ -70,14 +87,35 @@ export function ShopStaff() {
 
   const getRoleName = (roleId: string) => roles.find(r => r.id === roleId)?.name ?? 'Unknown';
 
-  const handleSave = () => {
-    if (!form.name.trim() || !form.phone.trim() || !form.roleId) return;
-    if (editing) {
-      setStaff(prev => prev.map(s => (s.id === editing.id ? { ...s, name: form.name, email: form.email, phone: form.phone, roleId: form.roleId, role: getRoleName(form.roleId), active: form.active } : s)));
-      addToast('success', 'Staff updated');
-    } else {
-      setStaff(prev => [...prev, { id: generateId(), name: form.name, email: form.email, phone: form.phone, roleId: form.roleId, role: getRoleName(form.roleId), active: form.active }]);
-      addToast('success', 'Staff added');
+  const handleSave = async () => {
+    if (!form.name.trim() || !form.email.trim() || !form.roleId) return;
+    setSaving(true);
+    try {
+      if (editing) {
+        setStaff(prev => prev.map(s => (s.id === editing.id ? { ...s, name: form.name, email: form.email, phone: form.phone, roleId: form.roleId, role: getRoleName(form.roleId), active: form.active } : s)));
+        addToast('success', 'Staff updated');
+      } else {
+        const res = await api('/shop/staff', {
+          method: 'POST',
+          body: JSON.stringify({
+            email: form.email,
+            name: form.name,
+            phone: form.phone,
+            password: 'Temp@123',
+            roleId: form.roleId || undefined,
+          }),
+        });
+        if (res.ok) {
+          const newStaff = await res.json();
+          setStaff(prev => [...prev, newStaff]);
+          addToast('success', 'Staff added');
+        } else {
+          const err = await res.json();
+          addToast('error', 'Error', err.error || 'Could not add staff');
+        }
+      }
+    } finally {
+      setSaving(false);
     }
     setModalOpen(false);
   };
@@ -87,34 +125,46 @@ export function ShopStaff() {
     addToast('info', `${s.name} ${s.active ? 'deactivated' : 'activated'}`);
   };
 
-  const handleDelete = (s: StaffMember) => {
-    setStaff(prev => prev.filter(x => x.id !== s.id));
-    addToast('success', 'Staff removed');
+  const handleDelete = async (s: StaffMember) => {
+    const res = await api(`/shop/staff/${s.id}`, { method: 'DELETE' });
+    if (res.ok) {
+      setStaff(prev => prev.filter(x => x.id !== s.id));
+      addToast('success', 'Staff removed');
+    } else {
+      addToast('error', 'Error', 'Could not remove staff member');
+    }
   };
 
-  const handleInvite = () => {
+  const handleInvite = async () => {
     if (!inviteForm.name.trim() || !inviteForm.email.trim() || !inviteForm.roleId) return;
-    const token = 'inv-' + generateId();
-    const newInvite: StaffInvite = {
-      id: generateId(),
-      staffName: inviteForm.name.trim(),
-      staffEmail: inviteForm.email.trim(),
-      staffPhone: inviteForm.phone.trim(),
-      roleId: inviteForm.roleId,
-      roleName: getRoleName(inviteForm.roleId),
-      token,
-      status: 'pending',
-      createdAt: new Date().toISOString().split('T')[0],
-      expiresAt: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
-    };
-    setInvites(prev => [newInvite, ...prev]);
-    setInviteOpen(false);
-    addToast('success', 'Invite sent', `Invite link generated for ${inviteForm.name}`);
-    setTab('invites');
+    setSaving(true);
+    try {
+      const res = await api('/shop/staff/invites', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: inviteForm.name.trim(),
+          email: inviteForm.email.trim(),
+          phone: inviteForm.phone.trim(),
+          roleId: inviteForm.roleId || undefined,
+        }),
+      });
+      if (res.ok) {
+        const newInvite = await res.json();
+        setInvites(prev => [newInvite, ...prev]);
+        setInviteOpen(false);
+        addToast('success', 'Invite sent', `Invite email sent to ${inviteForm.email}`);
+        setTab('invites');
+      } else {
+        const err = await res.json();
+        addToast('error', 'Error', err.error || 'Could not send invite');
+      }
+    } finally {
+      setSaving(false);
+    }
   };
 
   const copyInviteLink = (token: string) => {
-    const link = `${window.location.origin}/auth/join?token=${token}`;
+    const link = `${window.location.origin}/auth/join/${token}`;
     navigator.clipboard.writeText(link);
     addToast('success', 'Link copied', 'Invite link copied to clipboard');
   };
