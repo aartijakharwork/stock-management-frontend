@@ -16,7 +16,7 @@ import { Input } from '../../components/ui/Input';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { JargonHint } from '../../components/ui/JargonHint';
 import { SuccessOverlay } from '../../components/ui/SuccessOverlay';
-import { formatCurrency, formatDate, generateId, formatInvoiceNo, gstBreakdown, formatRelativeTime } from '../../utils/formatters';
+import { formatCurrency, formatDate, formatInvoiceNo, gstBreakdown, formatRelativeTime } from '../../utils/formatters';
 import { api } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import { useHeldBills } from '../../hooks/useHeldBills';
@@ -63,7 +63,7 @@ const computeLineTotal = (item: CartItem): number => {
 };
 
 export function ShopBilling() {
-  const { items: inventoryItems, allCategoryNames, updateInventoryItem, refreshInventory } = useShopCatalog();
+  const { items: inventoryItems, allCategoryNames, refreshInventory } = useShopCatalog();
   const [billType, setBillType] = useState<BillType>('cash_memo');
   const [apiCustomers, setApiCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState('');
@@ -221,36 +221,6 @@ export function ShopBilling() {
       if (Math.abs(splitTotal - Math.abs(total)) > 1) return `Split tenders ${formatCurrency(splitTotal)} ≠ Total ${formatCurrency(Math.abs(total))}`;
     }
     return null;
-  };
-
-  const buildBill = (): Bill => {
-    const customer = attachedCustomer;
-    const typedName = customerName.trim();
-    const typedPhone = customerPhone.trim();
-    const totalDiscount = itemDiscountTotal + lineDiscountTotal + billDiscountAmount;
-    const allUdhaar = !splitMode && (paymentMethod as string) === 'udhaar';
-    const tenders = splitMode ? splitTenders.filter(t => t.amount > 0) : undefined;
-    const usesUdhaar = allUdhaar || (tenders?.some(t => t.method === 'udhaar') ?? false);
-    return {
-      id: 'B' + generateId().toUpperCase().slice(0, 7),
-      date: new Date().toISOString(),
-      customerName: customer?.name || typedName || (typedPhone ? `Customer · ${typedPhone}` : 'Walk-in'),
-      customerId: customer?.id,
-      customerPhone: customer?.phone || typedPhone || undefined,
-      items: cart.map(c => ({ ...c, appliedDiscountAmount: computeItemDiscount(c) })),
-      subtotal,
-      discount: totalDiscount,
-      total,
-      paymentMethod: splitMode ? undefined : (allUdhaar ? undefined : paymentMethod),
-      isUdhaar: usesUdhaar,
-      paid: !usesUdhaar,
-      note: note.trim() || undefined,
-      splitTenders: tenders,
-      roundOff: roundOffEnabled ? roundOff : undefined,
-      isReturn: mode === 'return',
-      returnedAgainst: mode === 'return' ? returnRefBillId : undefined,
-      createdBy: 'Shopkeeper',
-    };
   };
 
   const handleConfirmBill = () => {

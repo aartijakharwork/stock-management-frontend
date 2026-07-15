@@ -58,17 +58,6 @@ const BILL_EXPORT_COLUMNS: ExportColumn<Bill>[] = [
   { header: 'Status', accessor: b => billStatusLabel(b) },
 ];
 
-const isWithinRange = (dateStr: string, range: DateRange) => {
-  if (!range) return true;
-  const d = new Date(dateStr);
-  const now = new Date();
-  const start = new Date(now);
-  if (range === 'today') start.setHours(0, 0, 0, 0);
-  else if (range === '7d') start.setDate(now.getDate() - 7);
-  else if (range === '30d') start.setDate(now.getDate() - 30);
-  return d >= start;
-};
-
 const paymentIcon = (method?: string) => {
   if (method === 'upi') return <Smartphone size={12} className="inline mr-1" />;
   if (method === 'card') return <CardIcon size={12} className="inline mr-1" />;
@@ -82,8 +71,8 @@ export function ShopBillsHistory() {
   const [status, setStatus] = useState<StatusFilter>('');
   const [selected, setSelected] = useState<Bill | null>(null);
   const [loading, setLoading] = useState(true);
-  const [totalBills, setTotalBills] = useState(0);
-  const [page, setPage] = useState(1);
+  const [, setTotalBills] = useState(0);
+  const [page, _setPage] = useState(1);
   const [securityOpen, setSecurityOpen] = useState(false);
   const [securityTarget, setSecurityTarget] = useState<Bill | null>(null);
   const [securityInput, setSecurityInput] = useState('');
