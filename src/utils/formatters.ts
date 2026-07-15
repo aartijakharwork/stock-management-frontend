@@ -19,8 +19,9 @@ export function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
-export function formatInvoiceNo(billId: string, dateIso?: string): string {
-  const num = billId.replace(/[^0-9]/g, '').padStart(4, '0');
+export function formatInvoiceNo(billIdOrNumber: string, dateIso?: string): string {
+  if (/^(INV|CM|EST)-\d{4}-\d{4,}$/.test(billIdOrNumber)) return billIdOrNumber;
+  const num = billIdOrNumber.replace(/[^0-9]/g, '').padStart(4, '0');
   const d = dateIso ? new Date(dateIso) : new Date();
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');

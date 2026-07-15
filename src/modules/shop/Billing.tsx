@@ -16,15 +16,15 @@ import { Input } from '../../components/ui/Input';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { JargonHint } from '../../components/ui/JargonHint';
 import { SuccessOverlay } from '../../components/ui/SuccessOverlay';
-import { customers, bills as initialBills } from '../../data/shop-dummy';
 import { formatCurrency, formatDate, generateId, formatInvoiceNo, gstBreakdown, formatRelativeTime } from '../../utils/formatters';
+import { api } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import { useHeldBills } from '../../hooks/useHeldBills';
 import { useQuickCustomers } from '../../hooks/useQuickCustomers';
 import { useShopProfile } from '../../hooks/useShopProfile';
 import { useShopCatalog } from '../../context/ShopCatalogContext';
 import { playSuccess, playError, playClick, hapticSuccess, hapticTap, hapticError } from '../../utils/feedback';
-import type { CartItem, InventoryItem, Bill, PaymentMethod, SplitTender, DiscountType } from '../../types';
+import type { CartItem, InventoryItem, Bill, BillType, PaymentMethod, SplitTender, DiscountType, Customer } from '../../types';
 
 type TenderMethod = PaymentMethod | 'udhaar';
 
@@ -63,7 +63,9 @@ const computeLineTotal = (item: CartItem): number => {
 };
 
 export function ShopBilling() {
-  const { items: inventoryItems, allCategoryNames } = useShopCatalog();
+  const { items: inventoryItems, allCategoryNames, updateInventoryItem, refreshInventory } = useShopCatalog();
+  const [billType, setBillType] = useState<BillType>('cash_memo');
+  const [apiCustomers, setApiCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -88,6 +90,7 @@ export function ShopBilling() {
   const [returnRefBillId, setReturnRefBillId] = useState('');
   const [heldOpen, setHeldOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [billStockPending, setBillStockPending] = useState(false);
   const [lastBill, setLastBill] = useState<Bill | null>(null);
   const [numpadItem, setNumpadItem] = useState<string | null>(null);
   const [numpadValue, setNumpadValue] = useState('');
@@ -99,7 +102,18 @@ export function ShopBilling() {
   const { customers: quickCustomers, add: addQuickCustomer } = useQuickCustomers();
 
   const categories = allCategoryNames;
-  const allKnownCustomers = useMemo(() => [...customers, ...quickCustomers], [quickCustomers]);
+  useEffect(() => {
+    api('/shop/customers?limit=200').then(async r => {
+      if (r.ok) {
+        const data = await r.json();
+        setApiCustomers(data.items.map((c: { id: string; name: string; phone: string; udhaarBalance: number; address?: string; gstin?: string; email?: string; area?: string; pincode?: string; creditLimit?: number; tags?: string[] }) => ({
+          ...c,
+          pendingAmount: c.udhaarBalance ?? 0,
+        })));
+      }
+    }).catch(() => {});
+  }, []);
+  const allKnownCustomers = useMemo(() => [...apiCustomers, ...quickCustomers.filter(qc => !apiCustomers.some(ac => ac.phone === qc.phone))], [apiCustomers, quickCustomers]);
   const attachedCustomer = customerId ? allKnownCustomers.find(c => c.id === customerId) : undefined;
   const hasCustomerInfo = !!attachedCustomer || !!customerName.trim() || !!customerPhone.trim();
   // Backwards-compat for places still reading "selectedCustomer"
@@ -245,23 +259,90 @@ export function ShopBilling() {
     setConfirmOpen(true);
   };
 
-  const finalizeBill = () => {
-    const bill = buildBill();
-    // If this was an ad-hoc customer (no id but typed name/phone), remember
-    // them so they show up as a suggestion next time.
-    if (!attachedCustomer && (customerName.trim() || customerPhone.trim())) {
-      addQuickCustomer({ name: customerName.trim(), phone: customerPhone.trim() });
+  const finalizeBill = async () => {
+    setBillStockPending(true);
+    try {
+      const allUdhaar = !splitMode && (paymentMethod as string) === 'udhaar';
+      const tenders = splitMode ? splitTenders.filter(t => t.amount > 0) : undefined;
+
+      const payload = {
+        billType,
+        items: cart.map(c => ({
+          inventoryItemId: c.id,
+          quantity: c.quantity,
+          discountType: c.appliedDiscountType || 'none',
+          discountValue: c.appliedDiscountValue ?? 0,
+        })),
+        customerName: attachedCustomer?.name || customerName.trim() || (customerPhone.trim() ? `Customer · ${customerPhone.trim()}` : 'Walk-in'),
+        customerId: attachedCustomer?.id,
+        customerPhone: attachedCustomer?.phone || customerPhone.trim() || undefined,
+        paymentMethod: splitMode ? undefined : (allUdhaar ? 'udhaar' : paymentMethod),
+        payments: tenders?.map(t => ({ method: t.method, amount: t.amount })),
+        discount: billDiscountAmount,
+        roundOff: roundOffEnabled ? roundOff : 0,
+        note: note.trim() || undefined,
+        isReturn: mode === 'return',
+        returnReason: mode === 'return' ? 'Customer return' : undefined,
+      };
+
+      const res = await api('/shop/bills', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        addToast('error', err.error || 'Failed to create bill');
+        playError();
+        hapticError();
+        return;
+      }
+
+      const savedBill = await res.json();
+      await refreshInventory();
+
+      const bill: Bill = {
+        id: savedBill.id,
+        billNumber: savedBill.billNumber,
+        billType: savedBill.billType,
+        date: savedBill.createdAt,
+        customerName: savedBill.customerName,
+        customerId: savedBill.customerId,
+        customerPhone: savedBill.customerPhone,
+        items: cart.map(c => ({ ...c, appliedDiscountAmount: computeItemDiscount(c) })),
+        subtotal,
+        discount: itemDiscountTotal + lineDiscountTotal + billDiscountAmount,
+        total: savedBill.total,
+        paymentMethod: splitMode ? undefined : (allUdhaar ? undefined : paymentMethod),
+        isUdhaar: allUdhaar || (tenders?.some(t => t.method === 'udhaar') ?? false),
+        paid: savedBill.paymentStatus === 'paid',
+        paymentStatus: savedBill.paymentStatus,
+        udhaarAmount: savedBill.udhaarAmount,
+        note: note.trim() || undefined,
+        splitTenders: tenders,
+        roundOff: roundOffEnabled ? roundOff : undefined,
+        isReturn: mode === 'return',
+        createdBy: 'Shopkeeper',
+      };
+
+      clearCart();
+
+      if (!attachedCustomer && (customerName.trim() || customerPhone.trim())) {
+        addQuickCustomer({ name: customerName.trim(), phone: customerPhone.trim() });
+      }
+      setLastBill(bill);
+      setMobileCartOpen(false);
+      setConfirmOpen(false);
+      setShowSuccess(true);
+      playSuccess();
+      hapticSuccess();
+      setTimeout(() => {
+        setShowSuccess(false);
+        setReceipt(bill);
+      }, 1400);
+    } finally {
+      setBillStockPending(false);
     }
-    setLastBill(bill);
-    setMobileCartOpen(false);
-    setConfirmOpen(false);
-    setShowSuccess(true);
-    playSuccess();
-    hapticSuccess();
-    setTimeout(() => {
-      setShowSuccess(false);
-      setReceipt(bill);
-    }, 1400);
   };
 
   const openNumpad = (itemId: string) => {
@@ -351,7 +432,7 @@ export function ShopBilling() {
       receipt.isUdhaar ? '⚠ Saved as Udhaar (unpaid)' : `Paid via ${receipt.paymentMethod?.toUpperCase() ?? 'Split'}`,
     ];
     const text = encodeURIComponent(lines.join('\n'));
-    const phone = customers.find(c => c.id === receipt.customerId)?.phone || receipt.customerPhone;
+    const phone = allKnownCustomers.find(c => c.id === receipt.customerId)?.phone || receipt.customerPhone;
     const url = phone ? `https://wa.me/91${phone}?text=${text}` : `https://wa.me/?text=${text}`;
     window.open(url, '_blank');
   };
@@ -364,10 +445,8 @@ export function ShopBilling() {
     }
   }, [mobileCartOpen]);
 
-  const draftInvoice = useMemo(
-    () => formatInvoiceNo(String(initialBills.length + 1).padStart(3, '0'), new Date().toISOString()),
-    []
-  );
+  const billTypeLabel = billType === 'tax_invoice' ? 'Tax Invoice' : billType === 'estimate' ? 'Estimate' : 'Cash Memo';
+  const draftInvoice = billTypeLabel;
 
   const handlePaymentMethodChange = (m: TenderMethod) => {
     if (m !== 'udhaar') setPaymentMethod(m);
@@ -450,6 +529,24 @@ export function ShopBilling() {
               <RotateCcw size={11} /> Return
             </button>
           </div>
+          {/* Bill type selector */}
+          <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900">
+            <button
+              type="button"
+              onClick={() => setBillType('cash_memo')}
+              className={`px-3 py-1.5 text-xs font-medium ${billType === 'cash_memo' ? 'bg-emerald-600 text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
+            >Cash Memo</button>
+            <button
+              type="button"
+              onClick={() => setBillType('tax_invoice')}
+              className={`px-3 py-1.5 text-xs font-medium ${billType === 'tax_invoice' ? 'bg-blue-600 text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
+            >Tax Invoice</button>
+            <button
+              type="button"
+              onClick={() => setBillType('estimate')}
+              className={`px-3 py-1.5 text-xs font-medium ${billType === 'estimate' ? 'bg-amber-500 text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
+            >Estimate</button>
+          </div>
           {/* Last bill chip */}
           {lastBill && (
             <button
@@ -488,8 +585,8 @@ export function ShopBilling() {
             <p className="text-[11px] text-orange-700/80 dark:text-orange-300/80">Items will reverse stock and total will be negative.</p>
           </div>
           <div className="w-full sm:w-64">
-            <Dropdown
-              options={[{ label: 'Pick original bill *', value: '' }, ...initialBills.map(b => ({ label: `${b.id} · ${b.customerName} · ${formatCurrency(b.total)}`, value: b.id }))]}
+            <Input
+              placeholder="Enter original bill ID"
               value={returnRefBillId}
               onChange={e => setReturnRefBillId(e.target.value)}
             />
@@ -655,7 +752,7 @@ export function ShopBilling() {
           className="space-y-4"
           onSubmit={e => {
             e.preventDefault();
-            finalizeBill();
+            void finalizeBill();
           }}
         >
           <p className="text-sm text-gray-700 dark:text-gray-300">
@@ -765,8 +862,10 @@ export function ShopBilling() {
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" type="button" onClick={() => setConfirmOpen(false)}>Cancel</Button>
-            <Button variant="primary" type="submit">Confirm & {mode === 'return' ? 'Refund' : 'Print'}</Button>
+            <Button variant="secondary" type="button" disabled={billStockPending} onClick={() => setConfirmOpen(false)}>Cancel</Button>
+            <Button variant="primary" type="submit" disabled={billStockPending}>
+              {billStockPending ? 'Updating stock…' : `Confirm & ${mode === 'return' ? 'Refund' : 'Print'}`}
+            </Button>
           </div>
         </form>
       </Modal>

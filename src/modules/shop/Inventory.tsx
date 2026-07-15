@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Plus,
@@ -16,6 +16,7 @@ import {
   Eye,
   EyeOff,
   Lock,
+  Calendar,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -33,8 +34,7 @@ import { CardListSkeleton, TableSkeleton } from '../../components/ui/Skeleton';
 import { JargonHint } from '../../components/ui/JargonHint';
 import { Highlight } from '../../components/ui/Highlight';
 import { Checkbox } from '../../components/ui/Checkbox';
-import { suppliers, bills } from '../../data/shop-dummy';
-import { formatCurrency, generateId } from '../../utils/formatters';
+import { formatCurrency } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { usePermissions } from '../../context/PermissionContext';
 import { useShopCatalog } from '../../context/ShopCatalogContext';
@@ -45,6 +45,11 @@ import { useCostPriceSecurity } from '../../hooks/useCostPriceSecurity';
 
 const DEFAULT_REORDER = 10;
 const DEFAULT_TAX_RATE = 18;
+
+function supplierIdLabel(id?: string): string | undefined {
+  const t = id?.trim();
+  return t || undefined;
+}
 
 const emptyItem: Omit<InventoryItem, 'id'> = {
   name: '',
@@ -83,17 +88,6 @@ const calcMargin = (cost?: number, sell?: number) => {
   return ((sell - cost) / sell) * 100;
 };
 
-const lastSoldMap = (() => {
-  const map = new Map<string, string>();
-  bills.forEach(b => {
-    b.items.forEach(it => {
-      const prev = map.get(it.id);
-      if (!prev || b.date > prev) map.set(it.id, b.date);
-    });
-  });
-  return map;
-})();
-
 const INVENTORY_EXPORT_COLUMNS: ExportColumn<InventoryItem>[] = [
   { header: 'SKU', accessor: i => i.sku ?? '' },
   { header: 'Name', accessor: i => i.name },
@@ -123,11 +117,65 @@ function StockPill({ item }: { item: InventoryItem }) {
 
 type StockFilter = '' | 'low' | 'out';
 
+/** Client-side filter uses this term; above the threshold it follows `search` via useDeferredValue to cut work per keystroke. */
+const SEARCH_DEFER_ITEMS_THRESHOLD = 400;
+
+type AddedFilter = '' | '7d' | '30d' | 'custom';
+
+function itemCreatedTimeMs(item: InventoryItem): number | null {
+  if (!item.createdAt) return null;
+  const t = Date.parse(item.createdAt);
+  return Number.isNaN(t) ? null : t;
+}
+
+/** By server/local `createdAt`. Items without a date are excluded when a non-all preset or custom range applies. */
+function matchesAddedFilter(item: InventoryItem, preset: AddedFilter, from: string, to: string): boolean {
+  const t = itemCreatedTimeMs(item);
+  const now = Date.now();
+  const dayMs = 864e5;
+
+  if (preset === 'custom' && !from.trim() && !to.trim()) return true;
+
+  if (preset === '7d') {
+    if (t == null) return false;
+    return t >= now - 7 * dayMs;
+  }
+  if (preset === '30d') {
+    if (t == null) return false;
+    return t >= now - 30 * dayMs;
+  }
+  if (preset === 'custom') {
+    if (t == null) return false;
+    const start = from.trim() ? new Date(`${from.trim()}T00:00:00`).getTime() : -Infinity;
+    const end = to.trim() ? new Date(`${to.trim()}T23:59:59.999`).getTime() : Infinity;
+    return t >= start && t <= end;
+  }
+  return true;
+}
+
 export function ShopInventory() {
-  const { items, setItems, allCategoryNames, addCategory } = useShopCatalog();
+  const {
+    items,
+    allCategoryNames,
+    addCategory,
+    catalogLoading,
+    useApiCatalog,
+    inventoryFetchError,
+    dismissInventoryFetchError,
+    refreshInventory,
+    createInventoryItem,
+    updateInventoryItem,
+    deleteInventoryItem,
+    bulkImportInventoryItems,
+    bulkDeleteInventoryItems,
+  } = useShopCatalog();
   const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);
   const [categoryFilter, setCategoryFilter] = useState('');
   const [stockFilter, setStockFilter] = useState<StockFilter>('');
+  const [addedFilter, setAddedFilter] = useState<AddedFilter>('');
+  const [addedFrom, setAddedFrom] = useState('');
+  const [addedTo, setAddedTo] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<InventoryItem | null>(null);
   const [viewItem, setViewItem] = useState<InventoryItem | null>(null);
@@ -138,7 +186,8 @@ export function ShopInventory() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
+  const [savePending, setSavePending] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
   const { addToast } = useToast();
   const { can } = usePermissions();
   const { track } = useRecentlyViewed();
@@ -146,11 +195,6 @@ export function ShopInventory() {
   const [cpPinInput, setCpPinInput] = useState('');
   const [cpPinModalOpen, setCpPinModalOpen] = useState(false);
   const [costCodeInput, setCostCodeInput] = useState('');
-
-  useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 700);
-    return () => clearTimeout(t);
-  }, []);
 
   const canAdd = can('inventory', 'add');
   const canEdit = can('inventory', 'edit');
@@ -163,10 +207,15 @@ export function ShopInventory() {
     [cpSec.isCostHidden],
   );
 
-  const supplierOptions = useMemo(() => [
-    { label: '— None —', value: '' },
-    ...suppliers.map(s => ({ label: s.name, value: s.id })),
-  ], []);
+  /** Distinct supplier IDs already present on catalog items — datalist suggestions only; any string up to 64 chars is allowed. */
+  const supplierIdSuggestions = useMemo(() => {
+    const s = new Set<string>();
+    for (const i of items) {
+      const id = i.supplierId?.trim();
+      if (id) s.add(id);
+    }
+    return [...s].sort((a, b) => a.localeCompare(b));
+  }, [items]);
 
   const allCategories = allCategoryNames;
 
@@ -175,8 +224,11 @@ export function ShopInventory() {
     ...allCategories.map(c => ({ label: c, value: c })),
   ], [allCategories]);
 
+  const searchForFilter =
+    items.length >= SEARCH_DEFER_ITEMS_THRESHOLD ? deferredSearch : search;
+
   const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = searchForFilter.trim().toLowerCase();
     return items.filter(i => {
       const matchesSearch = !term
         || i.name.toLowerCase().includes(term)
@@ -188,9 +240,10 @@ export function ShopInventory() {
       const matchesStock = !stockFilter
         || (stockFilter === 'low' && isLowStock(i))
         || (stockFilter === 'out' && i.stock === 0);
-      return matchesSearch && matchesCat && matchesStock;
+      const matchesAdded = matchesAddedFilter(i, addedFilter, addedFrom, addedTo);
+      return matchesSearch && matchesCat && matchesStock && matchesAdded;
     });
-  }, [items, search, categoryFilter, stockFilter]);
+  }, [items, searchForFilter, categoryFilter, stockFilter, addedFilter, addedFrom, addedTo]);
 
   const [sortState, setSortState] = useState<SortState | null>(null);
   const sortFns: Record<string, (a: InventoryItem, b: InventoryItem) => number> = {
@@ -199,6 +252,7 @@ export function ShopInventory() {
     mrp: (a, b) => (a.mrp ?? a.price) - (b.mrp ?? b.price),
     discount: (a, b) => (a.discountPercent ?? 0) - (b.discountPercent ?? 0),
     stock: (a, b) => a.stock - b.stock,
+    value: (a, b) => a.price * a.stock - b.price * b.stock,
   };
   const sorted = useMemo(() => {
     if (!sortState || !sortFns[sortState.key]) return filtered;
@@ -216,7 +270,9 @@ export function ShopInventory() {
 
   const PAGE = 25;
   const [displayCount, setDisplayCount] = useState(PAGE);
-  useEffect(() => { setDisplayCount(PAGE); }, [search, categoryFilter, stockFilter, sortState, items.length]);
+  useEffect(() => {
+    setDisplayCount(PAGE);
+  }, [searchForFilter, categoryFilter, stockFilter, addedFilter, addedFrom, addedTo, sortState, items.length]);
   const visible = sorted.slice(0, displayCount);
   const sentinelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -306,7 +362,7 @@ export function ShopInventory() {
     addToast('success', `Category "${trimmed}" added`);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name.trim() || !form.category.trim()) {
       addToast('error', 'Please fill required fields');
       return;
@@ -320,19 +376,36 @@ export function ShopInventory() {
       addToast('warning', 'Cost is higher than selling price — margin will be negative');
     }
     const next = { ...form, price: sellPrice };
-    if (editing) {
-      setItems(prev => prev.map(i => i.id === editing.id ? { ...i, ...next } : i));
-      addToast('success', 'Item updated');
-    } else {
-      setItems(prev => [...prev, { id: generateId(), ...next }]);
-      addToast('success', 'Item added');
+    setSavePending(true);
+    try {
+      if (editing) {
+        const result = await updateInventoryItem(editing.id, next);
+        if (!result.ok) {
+          addToast('error', 'Could not save changes', result.error);
+          return;
+        }
+        addToast('success', 'Item updated');
+      } else {
+        const result = await createInventoryItem(next);
+        if (!result.ok) {
+          addToast('error', 'Could not add item', result.error);
+          return;
+        }
+        addToast('success', 'Item added');
+      }
+      setModalOpen(false);
+    } finally {
+      setSavePending(false);
     }
-    setModalOpen(false);
   };
 
-  const handleDelete = (id: string, name: string) => {
+  const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
-    setItems(prev => prev.filter(i => i.id !== id));
+    const result = await deleteInventoryItem(id);
+    if (!result.ok) {
+      addToast('error', 'Could not delete item', result.error);
+      return;
+    }
     addToast('success', 'Item deleted');
   };
 
@@ -349,14 +422,17 @@ export function ShopInventory() {
     if (allPageSelected) setSelectedIds(new Set());
     else setSelectedIds(new Set(visible.map(i => i.id)));
   };
-  const bulkDelete = () => {
+  const bulkDelete = async () => {
     if (!confirm(`Delete ${selectedIds.size} item${selectedIds.size === 1 ? '' : 's'}? This cannot be undone.`)) return;
-    setItems(prev => prev.filter(i => !selectedIds.has(i.id)));
+    const ids = [...selectedIds];
+    const result = await bulkDeleteInventoryItems(ids);
+    if (!result.ok) {
+      addToast('error', 'Could not delete items', result.error);
+      return;
+    }
     addToast('success', `${selectedIds.size} item${selectedIds.size === 1 ? '' : 's'} deleted`);
     setSelectedIds(new Set());
   };
-
-  const supplierName = (id?: string) => suppliers.find(s => s.id === id)?.name;
 
   return (
     <div className="space-y-3">
@@ -388,6 +464,37 @@ export function ShopInventory() {
           {canAdd && <Button variant="primary" size="sm" icon={<Plus size={14} />} onClick={openAdd}>Add item</Button>}
         </div>
       </div>
+
+      {useApiCatalog && inventoryFetchError && (
+        <div
+          role="alert"
+          className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-red-200 bg-red-50 dark:border-red-500/35 dark:bg-red-500/10 px-4 py-3"
+        >
+          <div className="flex gap-3 items-start min-w-0">
+            <AlertTriangle size={20} className="text-red-600 dark:text-red-400 shrink-0 mt-0.5" aria-hidden />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-red-900 dark:text-red-100">Inventory could not be loaded</p>
+              <p className="text-xs text-red-800/90 dark:text-red-200/90 mt-1 break-words">{inventoryFetchError}</p>
+              <p className="text-[11px] text-red-700/80 dark:text-red-300/80 mt-1">
+                Showing no items until the server responds — cached offline data is not used for shop inventory.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 shrink-0">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={catalogLoading}
+              onClick={() => void refreshInventory()}
+            >
+              Retry
+            </Button>
+            <Button variant="ghost" size="sm" onClick={dismissInventoryFetchError}>
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Compact stat tiles — full visual prominence, half the height of the old StatCards */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -459,6 +566,47 @@ export function ShopInventory() {
             clearable={!!categoryFilter}
           />
         </div>
+        <div className="flex flex-wrap items-center gap-2 min-w-0 w-full lg:flex-1 lg:min-w-[220px]">
+          <Calendar size={14} className="text-gray-400 shrink-0 hidden sm:block" aria-hidden />
+          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 shrink-0">Added</span>
+          <select
+            aria-label="Filter by date added"
+            value={addedFilter}
+            onChange={e => {
+              const v = e.target.value as AddedFilter;
+              setAddedFilter(v);
+              if (v !== 'custom') {
+                setAddedFrom('');
+                setAddedTo('');
+              }
+            }}
+            className="h-10 min-w-0 flex-1 sm:flex-none rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 text-sm text-gray-900 dark:text-white outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:focus:border-emerald-500"
+          >
+            <option value="">All time</option>
+            <option value="7d">Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+            <option value="custom">Custom range</option>
+          </select>
+          {addedFilter === 'custom' && (
+            <>
+              <input
+                type="date"
+                value={addedFrom}
+                onChange={e => setAddedFrom(e.target.value)}
+                className="h-10 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 text-sm text-gray-900 dark:text-white outline-none focus:border-emerald-500 focus:ring-1 dark:focus:border-emerald-500"
+                aria-label="Added from"
+              />
+              <span className="text-gray-400 hidden sm:inline">–</span>
+              <input
+                type="date"
+                value={addedTo}
+                onChange={e => setAddedTo(e.target.value)}
+                className="h-10 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 text-sm text-gray-900 dark:text-white outline-none focus:border-emerald-500 focus:ring-1 dark:focus:border-emerald-500"
+                aria-label="Added to"
+              />
+            </>
+          )}
+        </div>
       </div>
 
       {selectedIds.size > 0 && (
@@ -483,7 +631,7 @@ export function ShopInventory() {
         </div>
       )}
 
-      {loading ? (
+      {catalogLoading ? (
         <>
           <div className="hidden sm:block">
             <TableSkeleton rows={6} columns={5} />
@@ -494,7 +642,18 @@ export function ShopInventory() {
         </>
       ) : filtered.length === 0 ? (
         <Card>
-          {items.length === 0 ? (
+          {useApiCatalog && inventoryFetchError ? (
+            <EmptyState
+              icon={<AlertTriangle size={28} />}
+              title="Unable to load inventory"
+              description={inventoryFetchError}
+              action={
+                <Button variant="primary" size="sm" disabled={catalogLoading} onClick={() => void refreshInventory()}>
+                  Try again
+                </Button>
+              }
+            />
+          ) : items.length === 0 ? (
             <EmptyState
               icon={<Package size={28} />}
               title="No items in your inventory yet"
@@ -505,8 +664,23 @@ export function ShopInventory() {
             <EmptyState
               icon={<PackageX size={28} />}
               title="No items match your filters"
-              description="Try a different search term, category, or stock status."
-              action={<Button variant="secondary" size="sm" onClick={() => { setSearch(''); setCategoryFilter(''); setStockFilter(''); }}>Clear filters</Button>}
+              description="Try a different search term, category, stock status, or added date."
+              action={
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setSearch('');
+                    setCategoryFilter('');
+                    setStockFilter('');
+                    setAddedFilter('');
+                    setAddedFrom('');
+                    setAddedTo('');
+                  }}
+                >
+                  Clear filters
+                </Button>
+              }
             />
           )}
         </Card>
@@ -533,12 +707,20 @@ export function ShopInventory() {
                   render: i => (
                     <div>
                       <p className="text-xs text-gray-500 flex items-center gap-1">
-                        <Highlight text={i.category} query={search} />
-                        {i.sku && <span className="font-mono text-gray-400">· <Highlight text={i.sku} query={search} /></span>}
+                        <Highlight text={i.category} query={searchForFilter} />
+                        {i.sku && (
+                          <span className="font-mono text-gray-400">
+                            · <Highlight text={i.sku} query={searchForFilter} />
+                          </span>
+                        )}
                       </p>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white"><Highlight text={i.name} query={search} /></p>
-                      {i.supplierId && (
-                        <p className="text-[11px] text-gray-400 mt-0.5">via {supplierName(i.supplierId)}</p>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">
+                        <Highlight text={i.name} query={searchForFilter} />
+                      </p>
+                      {supplierIdLabel(i.supplierId) && (
+                        <p className="text-[11px] text-gray-400 mt-0.5">
+                          via {supplierIdLabel(i.supplierId)}
+                        </p>
                       )}
                     </div>
                   ),
@@ -582,6 +764,7 @@ export function ShopInventory() {
                 {
                   key: 'value',
                   header: 'Value',
+                  sortable: true,
                   render: (i: InventoryItem) => <span className="tabular-nums text-gray-500">{formatCurrency(i.price * i.stock)}</span>,
                   className: 'text-right',
                 },
@@ -619,10 +802,16 @@ export function ShopInventory() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="text-xs text-gray-500 flex items-center gap-1">
-                      <Highlight text={i.category} query={search} />
-                      {i.sku && <span className="font-mono text-gray-400 truncate">· <Highlight text={i.sku} query={search} /></span>}
+                      <Highlight text={i.category} query={searchForFilter} />
+                      {i.sku && (
+                        <span className="font-mono text-gray-400 truncate">
+                          · <Highlight text={i.sku} query={searchForFilter} />
+                        </span>
+                      )}
                     </p>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white"><Highlight text={i.name} query={search} /></p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      <Highlight text={i.name} query={searchForFilter} />
+                    </p>
                     <p className="text-xs text-gray-500 tabular-nums mt-0.5">
                       {cpSec.isCostHidden
                         ? <span className="inline-flex items-center gap-1"><Lock size={10} /> ••••••</span>
@@ -631,9 +820,6 @@ export function ShopInventory() {
                         <span className="ml-1.5 text-emerald-600 dark:text-emerald-400">· {i.discountPercent}% off</span>
                       )}
                     </p>
-                    {lastSoldMap.get(i.id) && (
-                      <p className="text-[11px] text-gray-400 mt-0.5">Last sold: {lastSoldMap.get(i.id)}</p>
-                    )}
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-[10px] text-gray-400 uppercase tracking-wider">MRP</p>
@@ -804,7 +990,25 @@ export function ShopInventory() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <Input label="Reorder level" type="number" value={form.reorderLevel ?? ''} onChange={e => setForm({ ...form, reorderLevel: Number(e.target.value) })} />
-                <Dropdown label="Supplier" options={supplierOptions} value={form.supplierId ?? ''} onChange={e => setForm({ ...form, supplierId: e.target.value })} />
+                <div>
+                  <Input
+                    label="Supplier ID"
+                    value={form.supplierId ?? ''}
+                    onChange={e =>
+                      setForm({ ...form, supplierId: e.target.value.slice(0, 64) })
+                    }
+                    list="inventory-supplier-ids"
+                    placeholder="Code or ID (matches server, max 64 chars)"
+                  />
+                  <datalist id="inventory-supplier-ids">
+                    {supplierIdSuggestions.map(v => (
+                      <option key={v} value={v} />
+                    ))}
+                  </datalist>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                    Optional. Suggestions are IDs already used on items. Enter any supplier code your shop uses — there is no global supplier list on the server yet.
+                  </p>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <Input label="Expiry date" type="date" value={form.expiryDate ?? ''} onChange={e => setForm({ ...form, expiryDate: e.target.value })} />
@@ -815,7 +1019,7 @@ export function ShopInventory() {
 
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" type="button" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button variant="primary" type="submit">{editing ? 'Save changes' : 'Add item'}</Button>
+            <Button variant="primary" type="submit" disabled={savePending}>{editing ? 'Save changes' : 'Add item'}</Button>
           </div>
         </form>
       </Modal>
@@ -828,8 +1032,7 @@ export function ShopInventory() {
           const sellPrice = computeSellPrice(mrp, disc);
           const margin = calcMargin(viewItem.costPrice, sellPrice);
           const stockVal = viewItem.price * viewItem.stock;
-          const supplier = supplierName(viewItem.supplierId);
-          const lastSold = lastSoldMap.get(viewItem.id);
+          const supplier = supplierIdLabel(viewItem.supplierId);
 
           return (
             <div className="space-y-5">
@@ -885,12 +1088,6 @@ export function ShopInventory() {
                   <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Stock Value</p>
                   <p className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">{formatCurrency(stockVal)}</p>
                 </div>
-                {lastSold && (
-                  <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
-                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Last Sold</p>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{lastSold}</p>
-                  </div>
-                )}
               </div>
 
               {/* Additional details */}
@@ -956,12 +1153,22 @@ export function ShopInventory() {
       <BulkImportModal
         open={importOpen}
         onClose={() => setImportOpen(false)}
-        onImport={(rows) => {
-          const imported: InventoryItem[] = rows.map(r => ({ id: generateId(), ...r }));
-          setItems(prev => [...imported, ...prev]);
-          addToast('success', `${imported.length} item${imported.length === 1 ? '' : 's'} imported`);
-          setImportOpen(false);
+        onImport={async rows => {
+          setImportBusy(true);
+          try {
+            const result = await bulkImportInventoryItems(rows);
+            if (!result.ok) {
+              addToast('error', 'Import failed', result.error);
+              return;
+            }
+            const imported = result.data;
+            addToast('success', `${imported.length} item${imported.length === 1 ? '' : 's'} imported`);
+            setImportOpen(false);
+          } finally {
+            setImportBusy(false);
+          }
         }}
+        importBusy={importBusy}
       />
 
       {/* PIN verification modal */}
@@ -1014,7 +1221,9 @@ interface ParsedRow {
 interface BulkImportModalProps {
   open: boolean;
   onClose: () => void;
-  onImport: (rows: Omit<InventoryItem, 'id'>[]) => void;
+  onImport: (rows: Omit<InventoryItem, 'id'>[]) => void | Promise<void>;
+  /** Disables import button while API request runs */
+  importBusy?: boolean;
 }
 
 const REQUIRED_HEADERS = ['name', 'price', 'stock', 'category'];
@@ -1049,7 +1258,7 @@ function parseCSV(text: string): { headers: string[]; rows: string[][] } {
   return { headers, rows };
 }
 
-function BulkImportModal({ open, onClose, onImport }: BulkImportModalProps) {
+function BulkImportModal({ open, onClose, onImport, importBusy = false }: BulkImportModalProps) {
   const [fileName, setFileName] = useState<string | null>(null);
   const [parsed, setParsed] = useState<ParsedRow[] | null>(null);
   const [headerError, setHeaderError] = useState<string | null>(null);
@@ -1098,7 +1307,6 @@ function BulkImportModal({ open, onClose, onImport }: BulkImportModalProps) {
       setUnknownHeaders(headers.filter(h => !ALL_HEADERS.some(a => a.toLowerCase() === h.toLowerCase())));
 
       const idx = (h: string) => lower.indexOf(h.toLowerCase());
-      const supplierIds = new Set(suppliers.map(s => s.id));
 
       const parsedRows: ParsedRow[] = rows.map((cells, i) => {
         const get = (h: string) => { const k = idx(h); return k >= 0 ? (cells[k] ?? '').trim() : ''; };
@@ -1121,7 +1329,7 @@ function BulkImportModal({ open, onClose, onImport }: BulkImportModalProps) {
         if (costPrice && costPrice > price) errors.push('cost > price');
         if (Number.isNaN(taxRate)) errors.push('taxRate invalid');
         if (Number.isNaN(reorderLevel)) errors.push('reorderLevel invalid');
-        if (supplierId && !supplierIds.has(supplierId)) errors.push(`supplier "${supplierId}" not found`);
+        if (supplierId && supplierId.length > 64) errors.push('supplierId max 64 characters');
 
         return {
           raw,
@@ -1155,7 +1363,7 @@ function BulkImportModal({ open, onClose, onImport }: BulkImportModalProps) {
 
   const handleImport = () => {
     if (!parsed || validRows.length === 0) return;
-    onImport(validRows.map(r => r.data));
+    void onImport(validRows.map(r => r.data));
   };
 
   const downloadTemplate = () => {
@@ -1314,7 +1522,7 @@ function BulkImportModal({ open, onClose, onImport }: BulkImportModalProps) {
           </p>
           <div className="flex gap-2">
             <Button variant="secondary" type="button" onClick={onClose}>Cancel</Button>
-            <Button variant="primary" type="submit" disabled={!parsed || validRows.length === 0}>
+            <Button variant="primary" type="submit" disabled={importBusy || !parsed || validRows.length === 0}>
               Import {validRows.length > 0 ? validRows.length : ''} {validRows.length === 1 ? 'item' : 'items'}
             </Button>
           </div>

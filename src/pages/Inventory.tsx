@@ -7,7 +7,6 @@ import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { Input } from '../components/ui/Input';
 import { Dropdown } from '../components/ui/Dropdown';
-import { inventoryItems as initialItems } from '../data/dummy';
 import { formatCurrency, generateId } from '../utils/formatters';
 import type { InventoryItem } from '../types';
 
@@ -28,7 +27,7 @@ const categories = [
 const emptyItem: Omit<InventoryItem, 'id'> = { name: '', price: 0, stock: 0, category: '', unit: 'piece' };
 
 export function Inventory() {
-  const [items, setItems] = useState(initialItems);
+  const [items, setItems] = useState<InventoryItem[]>([]);
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<InventoryItem | null>(null);

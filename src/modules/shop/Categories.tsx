@@ -46,10 +46,15 @@ export function SettingsCategoriesPanel() {
     setEditName(name);
   };
 
-  const handleRename = () => {
+  const handleRename = async () => {
     if (!editingId) return;
-    if (!renameCategory(editingId, editName)) {
-      addToast('error', 'Could not rename', 'Name may already exist or is unchanged.');
+    const r = await renameCategory(editingId, editName);
+    if (!r.ok) {
+      if (r.error) {
+        addToast('error', 'Could not rename category', r.error);
+      } else {
+        addToast('error', 'Could not rename', 'Name may already exist or is unchanged.');
+      }
       return;
     }
     addToast('success', 'Category updated');
@@ -180,7 +185,7 @@ export function SettingsCategoriesPanel() {
           className="space-y-4"
           onSubmit={e => {
             e.preventDefault();
-            handleRename();
+            void handleRename();
           }}
         >
           <Input

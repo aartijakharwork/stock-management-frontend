@@ -30,8 +30,6 @@ export const MVP_VISIBLE_MODULES: AppModule[] = [
   'inventory',
   'customers',
   'bills',
-  'staff',
-  'roles',
   'settings',
 ];
 
@@ -47,6 +45,8 @@ export const MVP_HIDDEN_PATHS: string[] = [
   '/shop/expenses',
   '/shop/suppliers',
   '/shop/subscription',
+  '/shop/staff',
+  '/shop/roles',
 ];
 
 export function isPathHidden(path: string): boolean {

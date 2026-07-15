@@ -1,18 +1,15 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Store, Eye, EyeOff } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 
 export function Signup() {
   const [form, setForm] = useState({ shopName: '', ownerName: '', email: '', phone: '', password: '', confirmPassword: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const { signup } = useAuth();
   const { addToast } = useToast();
-  const navigate = useNavigate();
 
   const update = (field: string, value: string) => setForm(prev => ({ ...prev, [field]: value }));
 
@@ -29,11 +26,7 @@ export function Signup() {
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
-    const success = signup({ shopName: form.shopName, ownerName: form.ownerName, email: form.email, phone: form.phone, password: form.password });
-    if (success) {
-      addToast('success', 'Account created!', 'Your shop has been registered.');
-      navigate('/shop');
-    }
+    addToast('info', 'Registration is invite-only', 'New shops are created by the platform admin. Use Sign in if you already have an account.');
   };
 
   return (

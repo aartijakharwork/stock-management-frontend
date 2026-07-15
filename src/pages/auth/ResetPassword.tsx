@@ -5,6 +5,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useToast } from '../../context/ToastContext';
 import { api } from '../../api/client';
+import { validatePassword, PASSWORD_POLICY_HINT } from '../../utils/passwordPolicy';
 
 export function ResetPassword() {
   const [searchParams] = useSearchParams();
@@ -27,24 +28,29 @@ export function ResetPassword() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    const check = validatePassword(password);
+    if (!check.ok) { setError(check.error); return; }
     if (password !== confirmPassword) { setError('Passwords do not match'); return; }
     setError('');
     setSubmitting(true);
 
-    const res = await api('/auth/reset-password', {
-      method: 'POST',
-      body: JSON.stringify({ token, password }),
-    });
+    try {
+      const res = await api('/auth/reset-password', {
+        method: 'POST',
+        body: JSON.stringify({ token, password }),
+      });
 
-    setSubmitting(false);
-
-    if (res.ok) {
-      addToast('success', 'Password reset', 'You can now sign in with your new password.');
-      navigate('/auth/login');
-    } else {
-      const data = await res.json();
-      setError(data.error || 'Failed to reset password');
+      if (res.ok) {
+        addToast('success', 'Password reset', 'You can now sign in with your new password.');
+        navigate('/auth/login');
+      } else {
+        const data = await res.json().catch(() => ({ error: 'Failed to reset password' }));
+        setError(data.error || 'Failed to reset password');
+      }
+    } catch {
+      setError('Network error. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -81,7 +87,7 @@ export function ResetPassword() {
             <Store size={28} className="text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Set new password</h1>
-          <p className="mt-1 text-sm text-gray-500">Choose a strong password for your account.</p>
+          <p className="mt-1 text-sm text-gray-500">{PASSWORD_POLICY_HINT}</p>
         </div>
 
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6 shadow-sm">
@@ -91,7 +97,7 @@ export function ResetPassword() {
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              placeholder="Min 6 characters"
+              placeholder="Strong password"
             />
             <Input
               label="Confirm Password"

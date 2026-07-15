@@ -5,6 +5,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useToast } from '../../context/ToastContext';
 import { api, setAccessToken } from '../../api/client';
+import { validatePassword, PASSWORD_POLICY_HINT } from '../../utils/passwordPolicy';
 
 interface StaffInviteInfo {
   staffName: string;
@@ -44,26 +45,31 @@ export function JoinStaff() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    const check = validatePassword(password);
+    if (!check.ok) { setError(check.error); return; }
     if (password !== confirmPassword) { setError('Passwords do not match'); return; }
     setError('');
     setSubmitting(true);
 
-    const res = await api(`/auth/join/${token}/accept`, {
-      method: 'POST',
-      body: JSON.stringify({ password, name: name || undefined, phone: phone || undefined }),
-    });
+    try {
+      const res = await api(`/auth/join/${token}/accept`, {
+        method: 'POST',
+        body: JSON.stringify({ password, name: name || undefined, phone: phone || undefined }),
+      });
 
-    setSubmitting(false);
-
-    if (res.ok) {
-      const data = await res.json();
-      setAccessToken(data.accessToken);
-      addToast('success', 'Welcome!', `You've joined ${info?.shopName}.`);
-      window.location.href = '/shop';
-    } else {
-      const data = await res.json();
-      setError(data.error || 'Failed to accept invitation');
+      if (res.ok) {
+        const data = await res.json();
+        setAccessToken(data.accessToken);
+        addToast('success', 'Welcome!', `You've joined ${info?.shopName}.`);
+        window.location.href = '/shop';
+      } else {
+        const data = await res.json().catch(() => ({ error: 'Failed to accept invitation' }));
+        setError(data.error || 'Failed to accept invitation');
+      }
+    } catch {
+      setError('Network error. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -100,6 +106,7 @@ export function JoinStaff() {
           <p className="mt-1 text-sm text-gray-500">
             You've been invited as staff. Set your password to get started.
           </p>
+          <p className="mt-1 text-xs text-gray-400">{PASSWORD_POLICY_HINT}</p>
           <p className="mt-1 text-xs text-gray-400">{info!.staffEmail}</p>
         </div>
 
@@ -124,7 +131,7 @@ export function JoinStaff() {
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="Min 6 characters"
+                placeholder="Strong password"
               />
               <button
                 type="button"

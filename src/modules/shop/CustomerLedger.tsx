@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -21,17 +21,12 @@ import { Input } from '../../components/ui/Input';
 import { Dropdown } from '../../components/ui/Dropdown';
 import { ExportMenu } from '../../components/ui/ExportMenu';
 import { Breadcrumb } from '../../components/ui/Breadcrumb';
-import {
-  customers as initialCustomers,
-  bills as initialBills,
-  ledgerEntries as initialLedger,
-  activityEntries,
-} from '../../data/shop-dummy';
+import { api } from '../../api/client';
 import { formatCurrency, formatDate, formatRelativeTime } from '../../utils/formatters';
 import { customerAging, AGING_TONES, customerHealth, HEALTH_TONES } from '../../utils/customerAging';
 import { useToast } from '../../context/ToastContext';
 import { getSecuritySettings } from '../../utils/security';
-import type { LedgerEntry, PaymentMethod } from '../../types';
+import type { Bill, Customer, LedgerEntry, PaymentMethod } from '../../types';
 import type { ExportColumn } from '../../utils/exporters';
 
 interface DerivedRow extends LedgerEntry {
@@ -45,7 +40,10 @@ export function ShopCustomerLedger() {
   const navigate = useNavigate();
   const { addToast } = useToast();
 
-  const [ledger, setLedger] = useState<LedgerEntry[]>(initialLedger);
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [customerBills, setCustomerBills] = useState<Bill[]>([]);
+  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
+  const [loading, setLoading] = useState(true);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
@@ -57,10 +55,30 @@ export function ShopCustomerLedger() {
   const [securityInput, setSecurityInput] = useState('');
   const [securityError, setSecurityError] = useState('');
 
-  const customer = initialCustomers.find(c => c.id === id);
-
-  // Aggregate bills + ledger entries to compute running balance
-  const customerBills = useMemo(() => initialBills.filter(b => b.customerId === id), [id]);
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [custRes, billsRes] = await Promise.all([
+          api(`/shop/customers/${id}`),
+          api(`/shop/bills?customerId=${id}&limit=200`),
+        ]);
+        if (cancelled) return;
+        if (custRes.ok) {
+          const data = await custRes.json();
+          setCustomer({ ...data, pendingAmount: data.udhaarBalance ?? data.pendingAmount ?? 0 });
+        }
+        if (billsRes.ok) {
+          const data = await billsRes.json();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          setCustomerBills((data.items ?? []).map((b: any) => ({ ...b, date: b.createdAt || b.date })));
+        }
+      } catch { /* ignore */ }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [id]);
 
   const allEntries = useMemo(() => {
     const fromBills: LedgerEntry[] = customerBills.map(b => ({
@@ -96,7 +114,7 @@ export function ShopCustomerLedger() {
   const totalBilled = customerBills.reduce((s, b) => s + b.total, 0);
   const totalReceived = useMemo(() => ledger.filter(l => l.customerId === id && l.kind === 'payment').reduce((s, l) => s + l.credit, 0), [ledger, id]);
   const outstanding = customer?.pendingAmount ?? 0;
-  const aging = customer ? customerAging(customer, initialBills) : null;
+  const aging = customer ? customerAging(customer, customerBills) : null;
   const health = customer ? customerHealth(customer, aging) : null;
 
   const exportColumns: ExportColumn<DerivedRow>[] = [
@@ -107,6 +125,15 @@ export function ShopCustomerLedger() {
     { header: 'Credit (₹)', accessor: r => r.credit || '' },
     { header: 'Balance (₹)', accessor: r => r.balance },
   ];
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Button variant="ghost" icon={<ArrowLeft size={16} />} onClick={() => navigate('/shop/customers')}>Back</Button>
+        <Card><p className="text-center text-gray-500 py-10">Loading...</p></Card>
+      </div>
+    );
+  }
 
   if (!customer) {
     return (
@@ -119,21 +146,36 @@ export function ShopCustomerLedger() {
     );
   }
 
-  const persistPayment = () => {
+  const persistPayment = async () => {
     const amt = Number(paymentForm.amount);
-    const entry: LedgerEntry = {
-      id: 'L' + Date.now().toString(36),
-      customerId: customer.id,
-      date: new Date().toISOString().slice(0, 10),
-      kind: 'payment',
-      description: `Payment received (${paymentForm.method.toUpperCase()})${paymentForm.note ? ' — ' + paymentForm.note : ''}`,
-      debit: 0,
-      credit: amt,
-    };
-    setLedger(prev => [...prev, entry]);
-    addToast('success', 'Payment recorded', `${formatCurrency(amt)} from ${customer.name}`);
-    setPaymentForm({ amount: '', method: 'cash', note: '' });
-    setPaymentOpen(false);
+    try {
+      const res = await api(`/shop/customers/${customer.id}/payments`, {
+        method: 'POST',
+        body: JSON.stringify({ amount: amt, method: paymentForm.method, note: paymentForm.note || undefined }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed to record payment' }));
+        addToast('error', err.error || 'Failed to record payment');
+        return;
+      }
+      const updated = await res.json();
+      setCustomer(prev => prev ? { ...prev, pendingAmount: updated.udhaarBalance ?? 0 } : null);
+      const entry: LedgerEntry = {
+        id: 'L' + Date.now().toString(36),
+        customerId: customer.id,
+        date: new Date().toISOString().slice(0, 10),
+        kind: 'payment',
+        description: `Payment received (${paymentForm.method.toUpperCase()})${paymentForm.note ? ' — ' + paymentForm.note : ''}`,
+        debit: 0,
+        credit: amt,
+      };
+      setLedger(prev => [...prev, entry]);
+      addToast('success', 'Payment recorded', `${formatCurrency(amt)} from ${customer.name}`);
+      setPaymentForm({ amount: '', method: 'cash', note: '' });
+      setPaymentOpen(false);
+    } catch {
+      addToast('error', 'Network error');
+    }
   };
 
   const handleAddPayment = () => {
@@ -184,7 +226,6 @@ export function ShopCustomerLedger() {
   };
 
   const initial = customer.name.charAt(0).toUpperCase();
-  const customerActivities = activityEntries.filter(a => a.refKind === 'customer' && a.refId === customer.id);
 
   return (
     <div className="space-y-6">
@@ -373,22 +414,6 @@ export function ShopCustomerLedger() {
           </>
         )}
       </Card>
-
-      {/* Activity log */}
-      {customerActivities.length > 0 && (
-        <Card>
-          <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-3">Activity</h3>
-          <ul className="space-y-2">
-            {customerActivities.map(a => (
-              <li key={a.id} className="flex items-center gap-3 text-sm">
-                <Badge variant="info">{a.kind}</Badge>
-                <span className="flex-1 text-gray-700 dark:text-gray-300">{a.message}</span>
-                <span className="text-xs text-gray-500">{a.actor} · {formatRelativeTime(a.at)}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
 
       {/* Security prompt — required when shopkeeper has set a settle PIN in Settings */}
       <Modal open={securityOpen} onClose={() => { setSecurityOpen(false); setSecurityInput(''); setSecurityError(''); }} title="Confirm payment" size="sm">

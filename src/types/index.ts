@@ -70,6 +70,9 @@ export interface InventoryItem {
   taxRate?: number; // percent, defaults to 18
   expiryDate?: string; // ISO
   batchNo?: string;
+  /** ISO — set when item comes from API (Mongoose timestamps) or local create */
+  createdAt?: string;
+  updatedAt?: string;
   imageUrl?: string;
   lastSoldAt?: string; // ISO — derived but cached for performance
   // Catalogue fields
@@ -134,6 +137,8 @@ export interface SplitTender {
   amount: number;
 }
 
+export type BillType = 'tax_invoice' | 'cash_memo' | 'estimate';
+
 export interface Bill {
   id: string;
   date: string;
@@ -151,11 +156,26 @@ export interface Bill {
   // Phase 2 extensions
   splitTenders?: SplitTender[];
   roundOff?: number;
-  returnedAgainst?: string; // bill ID this is a return for (credit note)
+  returnedAgainst?: string;
   isReturn?: boolean;
   createdBy?: string;
   editedBy?: string;
   editedAt?: string;
+  // Billing system
+  billType?: BillType;
+  billNumber?: string;
+  billTypeName?: string;
+  paymentStatus?: 'paid' | 'partial' | 'unpaid';
+  udhaarAmount?: number;
+  payments?: { method: string; amount: number; reference?: string; note?: string }[];
+  estimateStatus?: 'active' | 'converted' | 'expired';
+  convertedToBillId?: string;
+  totalTaxableAmount?: number;
+  totalCgst?: number;
+  totalSgst?: number;
+  totalTax?: number;
+  customerGstin?: string;
+  inventoryDeducted?: boolean;
 }
 
 export interface HeldBill {

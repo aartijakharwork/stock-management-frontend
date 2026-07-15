@@ -52,21 +52,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const res = await api('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password, intent: 'shop' }),
-    });
+  const login = useCallback(async (email: string, password: string): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      const res = await api('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password, intent: 'shop' }),
+      });
 
-    const data = await res.json();
-    if (!res.ok) return { ok: false, error: data.error || 'Login failed' };
+      const data = await res.json().catch(() => ({ error: 'Login failed' }));
+      if (!res.ok) return { ok: false, error: data.error || 'Login failed' };
 
-    setAccessToken(data.accessToken);
-    setUser(mapApiUser(data.user));
-    if (data.user.permissions) {
-      staffPermissionsRef.current = data.user.permissions as RolePermissions;
+      setAccessToken(data.accessToken);
+      setUser(mapApiUser(data.user));
+      if (data.user.permissions) {
+        staffPermissionsRef.current = data.user.permissions as RolePermissions;
+      }
+      return { ok: true };
+    } catch {
+      return { ok: false, error: 'Network error. Please try again.' };
     }
-    return { ok: true };
   }, []);
 
   const logout = useCallback(async () => {

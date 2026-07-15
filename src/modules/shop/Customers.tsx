@@ -17,8 +17,8 @@ import { ExportMenu } from '../../components/ui/ExportMenu';
 import { CardListSkeleton, TableSkeleton } from '../../components/ui/Skeleton';
 import { Highlight } from '../../components/ui/Highlight';
 import { Checkbox } from '../../components/ui/Checkbox';
-import { customers as initialCustomers, bills as initialBills } from '../../data/shop-dummy';
-import { formatCurrency, formatDate, formatRelativeTime, generateId } from '../../utils/formatters';
+import { api } from '../../api/client';
+import { formatCurrency, formatDate, formatRelativeTime } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
 import { usePermissions } from '../../context/PermissionContext';
 import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
@@ -43,21 +43,18 @@ const emptyForm: CustomerFormState = {
   name: '', phone: '', address: '', area: '', pincode: '', email: '',
 };
 
-function lastPaymentMap(bills: Bill[]): Map<string, string> {
-  const map = new Map<string, string>();
-  for (const b of bills) {
-    if (!b.customerId || !b.paid) continue;
-    const prev = map.get(b.customerId);
-    if (!prev || new Date(b.date) > new Date(prev)) map.set(b.customerId, b.date);
-  }
-  return map;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapCustomer(raw: any): Customer {
+  return {
+    ...raw,
+    pendingAmount: raw.udhaarBalance ?? raw.pendingAmount ?? 0,
+  };
 }
 
 const customerStatus = (c: Customer) => c.pendingAmount > 0 ? 'Pending' : 'Cleared';
 
 export function ShopCustomers() {
-  const [customersList, setCustomers] = useState(initialCustomers);
-  const [bills, setBills] = useState(initialBills);
+  const [customersList, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState('');
   const [duesFilter, setDuesFilter] = useState<DuesFilter>('');
   const [addOpen, setAddOpen] = useState(false);
@@ -91,8 +88,18 @@ export function ShopCustomers() {
   };
 
   useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 700);
-    return () => clearTimeout(t);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api('/shop/customers?limit=200');
+        if (!cancelled && res.ok) {
+          const data = await res.json();
+          setCustomers((data.items ?? []).map(mapCustomer));
+        }
+      } catch { /* ignore */ }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const canAdd = can('customers', 'add');
@@ -100,9 +107,9 @@ export function ShopCustomers() {
 
   const agingMap = useMemo(() => {
     const m = new Map<string, ReturnType<typeof customerAging>>();
-    customersList.forEach(c => m.set(c.id, customerAging(c, bills)));
+    customersList.forEach(c => m.set(c.id, customerAging(c, [])));
     return m;
-  }, [customersList, bills]);
+  }, [customersList]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -177,7 +184,7 @@ export function ShopCustomers() {
     return totals;
   }, [customersList, agingMap]);
 
-  const lastPayments = useMemo(() => lastPaymentMap(bills), [bills]);
+  const lastPayments = useMemo(() => new Map<string, string>(), []);
 
   const exportColumns = useMemo<ExportColumn<Customer>[]>(() => [
     { header: 'Name', accessor: c => c.name },
@@ -234,27 +241,67 @@ export function ShopCustomers() {
     tags: undefined,
   });
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!validateForm()) return;
-    setCustomers(prev => [...prev, { id: generateId(), pendingAmount: 0, ...buildFromForm() }]);
-    setAddOpen(false);
-    addToast('success', 'Customer added');
+    try {
+      const res = await api('/shop/customers', {
+        method: 'POST',
+        body: JSON.stringify(buildFromForm()),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed to add customer' }));
+        addToast('error', err.error || 'Failed to add customer');
+        return;
+      }
+      const created = await res.json();
+      setCustomers(prev => [...prev, mapCustomer(created)]);
+      setAddOpen(false);
+      addToast('success', 'Customer added');
+    } catch {
+      addToast('error', 'Network error');
+    }
   };
 
-  const handleEditSave = () => {
+  const handleEditSave = async () => {
     if (!validateForm() || !editTarget) return;
-    const updated = buildFromForm();
-    setCustomers(prev => prev.map(c => c.id === editTarget.id ? { ...c, ...updated } : c));
-    if (selected?.id === editTarget.id) setSelected(prev => prev ? { ...prev, ...updated } : null);
-    setEditOpen(false);
-    addToast('success', 'Customer updated');
+    try {
+      const res = await api(`/shop/customers/${editTarget.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(buildFromForm()),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed to update' }));
+        addToast('error', err.error || 'Failed to update');
+        return;
+      }
+      const updated = mapCustomer(await res.json());
+      setCustomers(prev => prev.map(c => c.id === editTarget.id ? updated : c));
+      if (selected?.id === editTarget.id) setSelected(updated);
+      setEditOpen(false);
+      addToast('success', 'Customer updated');
+    } catch {
+      addToast('error', 'Network error');
+    }
   };
 
-  const doSettle = (customer: Customer) => {
-    setCustomers(prev => prev.map(c => c.id === customer.id ? { ...c, pendingAmount: 0 } : c));
-    setBills(prev => prev.map(b => b.customerId === customer.id && b.isUdhaar && !b.paid ? { ...b, paid: true } : b));
-    if (selected?.id === customer.id) setSelected({ ...customer, pendingAmount: 0 });
-    addToast('success', 'Dues settled', `${formatCurrency(customer.pendingAmount)} received from ${customer.name}`);
+  const doSettle = async (customer: Customer) => {
+    try {
+      const res = await api(`/shop/customers/${customer.id}/payments`, {
+        method: 'POST',
+        body: JSON.stringify({ amount: customer.pendingAmount, method: 'cash' }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed to settle' }));
+        addToast('error', err.error || 'Failed to settle dues');
+        return;
+      }
+      const updated = mapCustomer(await res.json());
+      setCustomers(prev => prev.map(c => c.id === customer.id ? updated : c));
+      if (selected?.id === customer.id) setSelected(updated);
+      addToast('success', 'Dues settled', `${formatCurrency(customer.pendingAmount)} received from ${customer.name}`);
+    } catch {
+      addToast('error', 'Network error');
+    }
   };
 
   const requestSettle = (customer: Customer) => {
@@ -286,15 +333,26 @@ export function ShopCustomers() {
     window.open(`https://wa.me/91${c.phone}?text=${text}`, '_blank');
   };
 
-  const customerBills = useMemo(() =>
-    selected ? bills.filter(b => b.customerId === selected.id) : [],
-    [selected, bills]
-  );
+  const [customerBills, setCustomerBills] = useState<Bill[]>([]);
+  const [customerTotalSpent, setCustomerTotalSpent] = useState(0);
 
-  const customerTotalSpent = useMemo(() =>
-    selected ? bills.filter(b => b.customerId === selected.id).reduce((s, b) => s + b.total, 0) : 0,
-    [selected, bills]
-  );
+  useEffect(() => {
+    if (!selected) { setCustomerBills([]); setCustomerTotalSpent(0); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api(`/shop/bills?customerId=${selected.id}&limit=20`);
+        if (!cancelled && res.ok) {
+          const data = await res.json();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const items = (data.items ?? []).map((b: any) => ({ ...b, date: b.createdAt || b.date }));
+          setCustomerBills(items);
+          setCustomerTotalSpent(items.reduce((s: number, b: Bill) => s + b.total, 0));
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [selected]);
 
   const initial = (name: string) => name.trim().charAt(0).toUpperCase() || '?';
 
@@ -670,12 +728,12 @@ export function ShopCustomers() {
                   {customerBills.map(b => (
                     <li key={b.id} className="flex items-center justify-between gap-3 px-4 py-3">
                       <div>
-                        <p className="font-mono text-xs text-gray-500">{b.id}</p>
+                        <p className="font-mono text-xs text-gray-500">{b.billNumber || b.id}</p>
                         <p className="text-xs text-gray-500">{formatDate(b.date)} · {b.items.length} item{b.items.length === 1 ? '' : 's'}</p>
                       </div>
                       <div className="text-right">
                         <p className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">{formatCurrency(b.total)}</p>
-                        {b.isUdhaar && !b.paid ? <Badge variant="warning">Udhaar</Badge> : <Badge variant="success">Paid</Badge>}
+                        {b.paymentStatus === 'unpaid' || b.paymentStatus === 'partial' ? <Badge variant="warning">Udhaar</Badge> : <Badge variant="success">Paid</Badge>}
                       </div>
                     </li>
                   ))}

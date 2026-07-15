@@ -358,7 +358,7 @@ export function ShopStaff() {
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" type="button" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button variant="primary" type="submit">{editing ? 'Save changes' : 'Add staff'}</Button>
+            <Button variant="primary" type="submit" disabled={saving}>{editing ? 'Save changes' : 'Add staff'}</Button>
           </div>
         </form>
       </Modal>
@@ -378,7 +378,7 @@ export function ShopStaff() {
           <Dropdown label="Assign role" options={roleFormOptions} value={inviteForm.roleId} onChange={e => setInviteForm({ ...inviteForm, roleId: e.target.value })} />
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" type="button" onClick={() => setInviteOpen(false)}>Cancel</Button>
-            <Button variant="primary" type="submit" icon={<Link2 size={14} />}>Generate invite link</Button>
+            <Button variant="primary" type="submit" icon={<Link2 size={14} />} disabled={saving}>Generate invite link</Button>
           </div>
         </form>
       </Modal>

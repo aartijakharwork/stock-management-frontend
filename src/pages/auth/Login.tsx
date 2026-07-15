@@ -25,14 +25,18 @@ export function Login() {
     if (Object.keys(errs).length > 0) return;
 
     setSubmitting(true);
-    const result = await login(email, password);
-    setSubmitting(false);
-
-    if (result.ok) {
-      addToast('success', 'Login successful', 'Welcome back!');
-      navigate('/shop');
-    } else {
-      addToast('error', 'Login failed', result.error || 'Invalid credentials');
+    try {
+      const result = await login(email, password);
+      if (result.ok) {
+        addToast('success', 'Login successful', 'Welcome back!');
+        navigate('/shop');
+      } else {
+        addToast('error', 'Login failed', result.error || 'Invalid credentials');
+      }
+    } catch {
+      addToast('error', 'Login failed', 'Network error. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -75,11 +79,7 @@ export function Login() {
               </button>
             </div>
 
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
-                <span className="text-sm text-gray-600 dark:text-gray-400">Remember me</span>
-              </label>
+            <div className="flex items-center justify-end">
               <Link to="/auth/forgot-password" className="text-sm text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 font-medium">
                 Forgot password?
               </Link>

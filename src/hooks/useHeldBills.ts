@@ -1,17 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import type { HeldBill } from '../types';
-import { heldBillsSeed } from '../data/shop-dummy';
-
 const KEY = 'shopmanager.heldbills';
 
 function read(): HeldBill[] {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) {
-      // seed once
-      localStorage.setItem(KEY, JSON.stringify(heldBillsSeed));
-      return heldBillsSeed;
-    }
+    if (!raw) return [];
     return JSON.parse(raw) as HeldBill[];
   } catch {
     return [];

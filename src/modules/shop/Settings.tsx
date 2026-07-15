@@ -14,6 +14,7 @@ import { Badge } from '../../components/ui/Badge';
 import { Tabs, TabPanel } from '../../components/ui/Tabs';
 import { UnsavedChangesGuard } from '../../components/ui/UnsavedChangesGuard';
 import { formatCurrency } from '../../utils/formatters';
+import { validatePassword } from '../../utils/passwordPolicy';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionContext';
@@ -143,7 +144,8 @@ export function ShopSettings() {
 
   const handleChangePassword = async () => {
     if (!cpCurrent) { setCpError('Current password is required'); return; }
-    if (cpNew.length < 6) { setCpError('New password must be at least 6 characters'); return; }
+    const check = validatePassword(cpNew);
+    if (!check.ok) { setCpError(check.error); return; }
     if (cpNew !== cpConfirm) { setCpError('Passwords do not match'); return; }
     setCpError('');
     setCpSubmitting(true);

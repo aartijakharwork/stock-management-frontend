@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { Store, Eye, EyeOff } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useToast } from '../../context/ToastContext';
 import { api, setAccessToken } from '../../api/client';
-import { useAuth } from '../../context/AuthContext';
+import { validatePassword, PASSWORD_POLICY_HINT } from '../../utils/passwordPolicy';
 
 interface InviteInfo {
   shopName: string;
@@ -15,7 +15,6 @@ interface InviteInfo {
 
 export function AcceptInvite() {
   const { token } = useParams<{ token: string }>();
-  const navigate = useNavigate();
   const { addToast } = useToast();
 
   const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null);
@@ -45,27 +44,31 @@ export function AcceptInvite() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    const check = validatePassword(password);
+    if (!check.ok) { setError(check.error); return; }
     if (password !== confirmPassword) { setError('Passwords do not match'); return; }
     setError('');
     setSubmitting(true);
 
-    const res = await api(`/invitations/${token}/accept`, {
-      method: 'POST',
-      body: JSON.stringify({ password, name: name || undefined, phone: phone || undefined }),
-    });
+    try {
+      const res = await api(`/invitations/${token}/accept`, {
+        method: 'POST',
+        body: JSON.stringify({ password, name: name || undefined, phone: phone || undefined }),
+      });
 
-    setSubmitting(false);
-
-    if (res.ok) {
-      const data = await res.json();
-      setAccessToken(data.accessToken);
-      addToast('success', 'Welcome!', `Your shop "${inviteInfo?.shopName}" is ready.`);
-      // Force full page reload to pick up new auth state
-      window.location.href = '/shop';
-    } else {
-      const data = await res.json();
-      setError(data.error || 'Failed to accept invitation');
+      if (res.ok) {
+        const data = await res.json();
+        setAccessToken(data.accessToken);
+        addToast('success', 'Welcome!', `Your shop "${inviteInfo?.shopName}" is ready.`);
+        window.location.href = '/shop';
+      } else {
+        const data = await res.json().catch(() => ({ error: 'Failed to accept invitation' }));
+        setError(data.error || 'Failed to accept invitation');
+      }
+    } catch {
+      setError('Network error. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -102,6 +105,7 @@ export function AcceptInvite() {
           <p className="mt-1 text-sm text-gray-500">
             You've been invited as shop owner. Set your password to get started.
           </p>
+          <p className="mt-1 text-xs text-gray-400">{PASSWORD_POLICY_HINT}</p>
           <p className="mt-1 text-xs text-gray-400">{inviteInfo!.ownerEmail} &middot; {inviteInfo!.plan} plan</p>
         </div>
 
@@ -126,7 +130,7 @@ export function AcceptInvite() {
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="Min 6 characters"
+                placeholder="Strong password"
               />
               <button
                 type="button"

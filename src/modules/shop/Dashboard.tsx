@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  Receipt, Clock, AlertTriangle, ArrowRight, ArrowUpRight, ArrowDownRight, PackageX,
+  Receipt, Clock, AlertTriangle, ArrowRight, PackageX,
   Share2, CheckCircle2, Phone, ShoppingCart, Users,
   TrendingUp, Banknote, Smartphone, CreditCard as CardIcon,
   Activity, RefreshCw, Check, X as XIcon, Sparkles, ChevronRight,
@@ -17,15 +17,15 @@ import { Modal } from '../../components/ui/Modal';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { Spinner } from '../../components/ui/Spinner';
 import { EmptyState } from '../../components/ui/EmptyState';
-import { bills, customers } from '../../data/shop-dummy';
+import { api } from '../../api/client';
 import { formatCurrency, formatInvoiceNo, formatRelativeTime } from '../../utils/formatters';
+import type { Bill, Customer } from '../../types';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { useShopCatalog } from '../../context/ShopCatalogContext';
 
-const TODAY = '2026-04-25';
-const YESTERDAY = '2026-04-24';
+function todayIso() { return new Date().toISOString().slice(0, 10); }
 
 function formatShortDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
@@ -33,7 +33,7 @@ function formatShortDate(iso: string) {
 
 function lastNDays(n: number): string[] {
   const out: string[] = [];
-  const base = new Date(TODAY);
+  const base = new Date();
   for (let i = n - 1; i >= 0; i--) {
     const d = new Date(base);
     d.setDate(base.getDate() - i);
@@ -64,10 +64,16 @@ function avatarTone(seed: string) {
   return AVATAR_TONES[h];
 }
 
-const CLEARED_TODAY = [
-  { id: 'ct-1', name: 'Sunil Sharma', phone: '9876543211', amount: 1500 },
-  { id: 'ct-2', name: 'Ravi Tiwari', phone: '9876543217', amount: 800 },
-];
+interface DashboardData {
+  todaysSales: number;
+  billCount: number;
+  cashTotal: number;
+  upiTotal: number;
+  cardTotal: number;
+  udhaarGivenToday: number;
+  totalPendingUdhaar: number;
+  customersWithDues: number;
+}
 
 export function ShopDashboard() {
   const { theme } = useTheme();
@@ -76,6 +82,10 @@ export function ShopDashboard() {
   const { addToast } = useToast();
   const navigate = useNavigate();
   const isDark = theme === 'dark';
+
+  const [dashData, setDashData] = useState<DashboardData | null>(null);
+  const [bills, setBills] = useState<Bill[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
 
   const [lowStockOpen, setLowStockOpen] = useState(false);
   const [lowStockLoading, setLowStockLoading] = useState(false);
@@ -108,18 +118,39 @@ export function ShopDashboard() {
     setSetupDismissed(true);
   };
 
-  useEffect(() => {
-    const t1 = setTimeout(() => setKpiLoading(false), 800);
-    const t2 = setTimeout(() => setRevenueLoading(false), 1400);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, []);
+  const fetchDashboard = async () => {
+    try {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const dateFrom = sevenDaysAgo.toISOString().slice(0, 10);
+      const [dashRes, billsRes, custRes] = await Promise.all([
+        api('/shop/dashboard/today'),
+        api(`/shop/bills?limit=50&dateFrom=${dateFrom}`),
+        api('/shop/customers?limit=200&sort=udhaarBalance&order=desc'),
+      ]);
+      if (dashRes.ok) setDashData(await dashRes.json());
+      if (billsRes.ok) {
+        const data = await billsRes.json();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setBills((data.items ?? []).map((b: any) => ({ ...b, date: b.createdAt || b.date })));
+      }
+      if (custRes.ok) {
+        const data = await custRes.json();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setCustomers((data.items ?? []).map((c: any) => ({ ...c, pendingAmount: c.udhaarBalance ?? 0 })));
+      }
+    } catch { /* ignore */ }
+    setKpiLoading(false);
+    setRevenueLoading(false);
+  };
+
+  useEffect(() => { fetchDashboard(); }, []);
 
   const refreshDashboard = () => {
     setKpiLoading(true);
     setRevenueLoading(true);
     addToast('success', 'Refreshing data');
-    setTimeout(() => setKpiLoading(false), 800);
-    setTimeout(() => setRevenueLoading(false), 1400);
+    fetchDashboard();
   };
   const [lowStockSelected, setLowStockSelected] = useState<Set<string>>(new Set());
   const [lowStockCategoryFilter, setLowStockCategoryFilter] = useState<string>('all');
@@ -138,35 +169,33 @@ export function ShopDashboard() {
   const axisColor = isDark ? '#6b7280' : '#9ca3af';
   const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
 
-  const todaySales = useMemo(() => bills.filter(b => b.date === TODAY).reduce((s, b) => s + b.total, 0), []);
-  const yesterdaySales = useMemo(() => bills.filter(b => b.date === YESTERDAY).reduce((s, b) => s + b.total, 0), []);
-  const salesTrend = yesterdaySales > 0 ? Math.round(((todaySales - yesterdaySales) / yesterdaySales) * 100) : 0;
-
-  const billsToday = useMemo(() => bills.filter(b => b.date === TODAY).length, []);
-  const billsYesterday = useMemo(() => bills.filter(b => b.date === YESTERDAY).length, []);
-  const billsTrend = billsYesterday > 0 ? Math.round(((billsToday - billsYesterday) / billsYesterday) * 100) : 0;
-
-  const pendingUdhaar = useMemo(() => customers.reduce((s, c) => s + c.pendingAmount, 0), []);
-  const pendingCustomers = useMemo(() => customers.filter(c => c.pendingAmount > 0), []);
+  const todaySales = dashData?.todaysSales ?? 0;
+  const billsToday = dashData?.billCount ?? 0;
+  const pendingUdhaar = dashData?.totalPendingUdhaar ?? 0;
+  const pendingCustomers = useMemo(() => customers.filter(c => c.pendingAmount > 0), [customers]);
   const lowStockItems = useMemo(() => inventoryItems.filter(i => i.stock <= 10).sort((a, b) => a.stock - b.stock), [inventoryItems]);
   const outOfStockItems = useMemo(() => inventoryItems.filter(i => i.stock === 0), [inventoryItems]);
 
   const revenueSeries = useMemo(() => {
     const byDate = new Map<string, number>();
-    for (const b of bills) byDate.set(b.date, (byDate.get(b.date) || 0) + b.total);
+    for (const b of bills) {
+      const d = (b.date || '').slice(0, 10);
+      if (d) byDate.set(d, (byDate.get(d) || 0) + b.total);
+    }
     return lastNDays(7).map(d => ({ date: d, label: formatShortDate(d), revenue: byDate.get(d) || 0 }));
-  }, []);
+  }, [bills]);
 
   const topItems = useMemo(() => {
     const tally = new Map<string, { name: string; qty: number; revenue: number }>();
     for (const b of bills) for (const it of b.items) {
-      const cur = tally.get(it.id) || { name: it.name, qty: 0, revenue: 0 };
+      const key = it.id || it.name;
+      const cur = tally.get(key) || { name: it.name, qty: 0, revenue: 0 };
       cur.qty += it.quantity;
       cur.revenue += it.price * it.quantity;
-      tally.set(it.id, cur);
+      tally.set(key, cur);
     }
     return Array.from(tally.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
-  }, []);
+  }, [bills]);
 
   const categorySplit = useMemo(() => {
     const tally = new Map<string, number>();
@@ -175,14 +204,13 @@ export function ShopDashboard() {
   }, [inventoryItems]);
 
   const paymentBreakdown = useMemo(() => {
-    const byMethod = { Cash: 0, UPI: 0, Card: 0 };
-    for (const b of bills.filter(b => b.paid)) {
-      if (b.paymentMethod === 'cash') byMethod.Cash += b.total;
-      else if (b.paymentMethod === 'upi') byMethod.UPI += b.total;
-      else if (b.paymentMethod === 'card') byMethod.Card += b.total;
-    }
+    const byMethod = {
+      Cash: dashData?.cashTotal ?? 0,
+      UPI: dashData?.upiTotal ?? 0,
+      Card: dashData?.cardTotal ?? 0,
+    };
     return Object.entries(byMethod).map(([name, value]) => ({ name, value })).filter(e => e.value > 0);
-  }, []);
+  }, [dashData]);
 
   const topCustomers = useMemo(() => {
     const tally = new Map<string, { name: string; spent: number; billCount: number }>();
@@ -193,9 +221,9 @@ export function ShopDashboard() {
       tally.set(b.customerId!, cur);
     }
     return Array.from(tally.values()).sort((a, b) => b.spent - a.spent).slice(0, 4);
-  }, []);
+  }, [bills]);
 
-  const recentBills = useMemo(() => [...bills].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5), []);
+  const recentBills = useMemo(() => [...bills].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5), [bills]);
 
   const shareOnWhatsApp = (item: { name: string; stock: number; unit: string }) => {
     const text = encodeURIComponent(`Low stock alert: ${item.name} — only ${item.stock} ${item.unit}(s) left. Please reorder.`);
@@ -246,7 +274,7 @@ export function ShopDashboard() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{user?.shopName || 'Shop Dashboard'}</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Here's how your shop is doing today · <span className="font-medium text-gray-700 dark:text-gray-300">{formatShortDate(TODAY)}</span></p>
+          <p className="mt-0.5 text-sm text-gray-500">Here's how your shop is doing today · <span className="font-medium text-gray-700 dark:text-gray-300">{formatShortDate(todayIso())}</span></p>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="success" className="text-xs">Live</Badge>
@@ -267,7 +295,7 @@ export function ShopDashboard() {
           { id: 'shop', label: 'Add shop logo & GST details',  done: false, to: '/shop/settings' },
           { id: 'item', label: 'Add your first 5 items',       done: inventoryItems.length >= 5, to: '/shop/inventory' },
           { id: 'cust', label: 'Add your first customer',      done: customers.length > 0, to: '/shop/customers' },
-          { id: 'bill', label: 'Generate your first bill',     done: bills.length > 0, to: '/shop/billing' },
+          { id: 'bill', label: 'Generate your first bill',     done: billsToday > 0 || bills.length > 0, to: '/shop/billing' },
           { id: 'tax',  label: 'Configure GST & tax rates',    done: false, to: '/shop/settings' },
         ];
         const completed = steps.filter(s => s.done).length;
@@ -372,15 +400,7 @@ export function ShopDashboard() {
               <p className="text-xs font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Today's Sales</p>
               <p className="mt-1 text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white tabular-nums">{formatCurrency(todaySales)}</p>
               <div className="mt-2 flex items-center gap-2">
-                <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold ${
-                  salesTrend >= 0
-                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
-                    : 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400'
-                }`}>
-                  {salesTrend >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-                  {salesTrend >= 0 ? '+' : ''}{salesTrend}%
-                </span>
-                <span className="text-xs text-gray-500">vs yesterday ({formatCurrency(yesterdaySales)})</span>
+                <span className="text-xs text-gray-500">{billsToday} bill{billsToday === 1 ? '' : 's'} today</span>
               </div>
             </div>
             <Badge variant="success" className="text-[10px]">Today</Badge>
@@ -410,9 +430,7 @@ export function ShopDashboard() {
           <div className="min-w-0">
             <p className="text-xs font-medium text-gray-500">Bills Today</p>
             <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{billsToday}</p>
-            <p className={`mt-1 text-xs font-medium ${billsTrend >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-              {billsTrend >= 0 ? '+' : ''}{billsTrend}% vs yesterday
-            </p>
+            <p className="mt-1 text-xs font-medium text-gray-500">invoices generated</p>
           </div>
           <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
             <Receipt size={18} />
@@ -476,9 +494,9 @@ export function ShopDashboard() {
             <CheckCircle2 size={17} />
           </div>
           <div className="min-w-0">
-            <p className="text-[11px] text-gray-500">Cleared Today</p>
-            <p className="text-base font-bold text-gray-900 dark:text-white tabular-nums">{formatCurrency(CLEARED_TODAY.reduce((s, c) => s + c.amount, 0))}</p>
-            <p className="text-[11px] text-emerald-600 dark:text-emerald-400">{CLEARED_TODAY.length} customers</p>
+            <p className="text-[11px] text-gray-500">Udhaar Given Today</p>
+            <p className="text-base font-bold text-gray-900 dark:text-white tabular-nums">{formatCurrency(dashData?.udhaarGivenToday ?? 0)}</p>
+            <p className="text-[11px] text-amber-600 dark:text-amber-400">credit given</p>
           </div>
         </button>
 
@@ -668,7 +686,7 @@ export function ShopDashboard() {
           </div>
           <ul className="space-y-1 -mx-2">
             {recentBills.map(bill => {
-              const isUd = bill.isUdhaar && !bill.paid;
+              const isUd = bill.paymentStatus === 'unpaid' || bill.paymentStatus === 'partial';
               const tone = avatarTone(bill.customerName);
               return (
                 <li key={bill.id}>
@@ -682,7 +700,7 @@ export function ShopDashboard() {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{bill.customerName}</p>
                       <p className="text-[11px] text-gray-500 truncate">
-                        <span className="font-mono">{formatInvoiceNo(bill.id, bill.date)}</span>
+                        <span className="font-mono">{formatInvoiceNo(bill.billNumber || bill.id, bill.date)}</span>
                         <span className="mx-1.5 text-gray-300 dark:text-gray-700">·</span>
                         {bill.items.length} item{bill.items.length === 1 ? '' : 's'}
                       </p>
@@ -1059,48 +1077,20 @@ export function ShopDashboard() {
         </div>
       </Modal>
 
-      {/* Cleared Payments Modal */}
+      {/* Udhaar Given Today Modal */}
       <Modal
         open={clearedOpen}
         onClose={() => setClearedOpen(false)}
-        title="Cleared Payments Today"
+        title="Udhaar Given Today"
         size="md"
         loading={clearedLoading}
-        loadingLabel="Loading payments…"
+        loadingLabel="Loading…"
       >
         <div className="space-y-1">
-          {CLEARED_TODAY.length === 0 ? (
-            <EmptyState
-              icon={<CheckCircle2 size={28} />}
-              title="No payments cleared today"
-              description="When customers settle their udhaar, they'll show up here."
-              tone="neutral"
-              compact
-            />
-          ) : (
-            <>
-              <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-200 dark:border-gray-800">
-                <span className="text-sm text-gray-500">{CLEARED_TODAY.length} customers</span>
-                <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">{formatCurrency(CLEARED_TODAY.reduce((s, c) => s + c.amount, 0))} received</span>
-              </div>
-              <ul className="divide-y divide-gray-200 dark:divide-gray-800">
-                {CLEARED_TODAY.map(c => (
-                  <li key={c.id} className="flex items-center justify-between gap-3 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-semibold text-sm shrink-0">
-                        {c.name.charAt(0)}
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">{c.name}</p>
-                        <p className="text-xs text-gray-500 flex items-center gap-1"><Phone size={11} /> {c.phone}</p>
-                      </div>
-                    </div>
-                    <Badge variant="success">{formatCurrency(c.amount)}</Badge>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
+          <div className="text-center py-8">
+            <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 tabular-nums">{formatCurrency(dashData?.udhaarGivenToday ?? 0)}</p>
+            <p className="text-sm text-gray-500 mt-2">Credit given to customers today</p>
+          </div>
         </div>
       </Modal>
     </div>

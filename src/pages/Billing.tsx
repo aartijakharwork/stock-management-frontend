@@ -3,9 +3,10 @@ import { ShoppingCart, Plus, Minus, Trash2, Printer, CreditCard, Receipt } from 
 import { Button } from '../components/ui/Button';
 import { SearchInput } from '../components/ui/SearchInput';
 import { Card } from '../components/ui/Card';
-import { inventoryItems } from '../data/dummy';
 import { formatCurrency } from '../utils/formatters';
 import type { CartItem, InventoryItem } from '../types';
+
+const inventoryItems: InventoryItem[] = [];
 
 export function Billing() {
   const [search, setSearch] = useState('');

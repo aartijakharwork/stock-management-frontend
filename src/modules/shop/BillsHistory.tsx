@@ -12,8 +12,8 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { ExportMenu } from '../../components/ui/ExportMenu';
 import { CardListSkeleton, TableSkeleton } from '../../components/ui/Skeleton';
 import { Link } from 'react-router-dom';
-import { bills as initialBills, customers } from '../../data/shop-dummy';
 import { formatCurrency, formatDate, formatInvoiceNo, gstBreakdown, formatRelativeTime } from '../../utils/formatters';
+import { api } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import { usePermissions } from '../../context/PermissionContext';
 import { getSecuritySettings } from '../../utils/security';
@@ -25,12 +25,16 @@ import type { ExportColumn } from '../../utils/exporters';
 type DateRange = '' | 'today' | '7d' | '30d';
 type StatusFilter = '' | 'paid' | 'udhaar';
 
-const TODAY = '2026-04-25';
-
-const billStatusLabel = (b: Bill) => b.isUdhaar && !b.paid ? 'Udhaar' : b.isUdhaar && b.paid ? 'Settled' : 'Paid';
+const billStatusLabel = (b: Bill) => {
+  if (b.paymentStatus === 'unpaid') return 'Udhaar';
+  if (b.paymentStatus === 'partial') return 'Partial';
+  if (b.isUdhaar && !b.paid) return 'Udhaar';
+  if (b.isUdhaar && b.paid) return 'Settled';
+  return 'Paid';
+};
 
 const BILL_EXPORT_COLUMNS: ExportColumn<Bill>[] = [
-  { header: 'Invoice No.', accessor: b => formatInvoiceNo(b.id, b.date) },
+  { header: 'Invoice No.', accessor: b => formatInvoiceNo(b.billNumber || b.id, b.date) },
   { header: 'Internal Ref', accessor: b => b.id },
   { header: 'Date', accessor: b => formatDate(b.date) },
   { header: 'Customer', accessor: b => b.customerName },
@@ -57,7 +61,7 @@ const BILL_EXPORT_COLUMNS: ExportColumn<Bill>[] = [
 const isWithinRange = (dateStr: string, range: DateRange) => {
   if (!range) return true;
   const d = new Date(dateStr);
-  const now = new Date(TODAY);
+  const now = new Date();
   const start = new Date(now);
   if (range === 'today') start.setHours(0, 0, 0, 0);
   else if (range === '7d') start.setDate(now.getDate() - 7);
@@ -72,12 +76,14 @@ const paymentIcon = (method?: string) => {
 };
 
 export function ShopBillsHistory() {
-  const [bills, setBills] = useState<Bill[]>(initialBills);
+  const [bills, setBills] = useState<Bill[]>([]);
   const [search, setSearch] = useState('');
   const [range, setRange] = useState<DateRange>('');
   const [status, setStatus] = useState<StatusFilter>('');
   const [selected, setSelected] = useState<Bill | null>(null);
   const [loading, setLoading] = useState(true);
+  const [totalBills, setTotalBills] = useState(0);
+  const [page, setPage] = useState(1);
   const [securityOpen, setSecurityOpen] = useState(false);
   const [securityTarget, setSecurityTarget] = useState<Bill | null>(null);
   const [securityInput, setSecurityInput] = useState('');
@@ -92,25 +98,44 @@ export function ShopBillsHistory() {
     track({
       kind: 'bill',
       id: b.id,
-      label: formatInvoiceNo(b.id, b.date),
+      label: formatInvoiceNo(b.billNumber || b.id, b.date),
       sublabel: `${b.customerName} · ${formatCurrency(b.total)}`,
       to: '/shop/bills',
     });
   };
 
   useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 700);
-    return () => clearTimeout(t);
-  }, []);
+    setLoading(true);
+    const params = new URLSearchParams({ page: String(page), limit: '50' });
+    if (status === 'udhaar') params.set('paymentStatus', 'unpaid');
+    else if (status === 'paid') params.set('paymentStatus', 'paid');
+    if (range === 'today') {
+      const today = new Date(); today.setHours(0,0,0,0);
+      params.set('dateFrom', today.toISOString().slice(0,10));
+    } else if (range === '7d') {
+      const d = new Date(); d.setDate(d.getDate()-7);
+      params.set('dateFrom', d.toISOString().slice(0,10));
+    } else if (range === '30d') {
+      const d = new Date(); d.setDate(d.getDate()-30);
+      params.set('dateFrom', d.toISOString().slice(0,10));
+    }
+    if (search.trim()) params.set('q', search.trim());
+    api(`/shop/bills?${params}`).then(async r => {
+      if (r.ok) {
+        const data = await r.json();
+        const mapped: Bill[] = data.items.map((b: Record<string, unknown>) => ({
+          ...b,
+          date: (b.createdAt as string) || (b.date as string),
+          isUdhaar: (b.paymentStatus as string) !== 'paid',
+          paid: (b.paymentStatus as string) === 'paid',
+        }));
+        setBills(mapped);
+        setTotalBills(data.total);
+      }
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, [page, status, range, search]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return bills.filter(b => {
-      const matchesSearch = !q || b.id.toLowerCase().includes(q) || b.customerName.toLowerCase().includes(q);
-      const matchesStatus = !status || (status === 'paid' && b.paid) || (status === 'udhaar' && b.isUdhaar && !b.paid);
-      return matchesSearch && matchesStatus && isWithinRange(b.date, range);
-    });
-  }, [bills, search, status, range]);
+  const filtered = useMemo(() => bills, [bills]);
 
   const [sortState, setSortState] = useState<SortState | null>(null);
   const sortFns: Record<string, (a: Bill, b: Bill) => number> = {
@@ -191,10 +216,7 @@ export function ShopBillsHistory() {
     return <Badge variant="success">Paid</Badge>;
   };
 
-  const selectedCustomer = useMemo(() => {
-    if (!selected?.customerId) return null;
-    return customers.find(c => c.id === selected.customerId) || null;
-  }, [selected]);
+  const selectedCustomerPhone = selected?.customerPhone || null;
 
   return (
     <div className="space-y-3">
@@ -282,7 +304,7 @@ export function ShopBillsHistory() {
       <div className="hidden sm:block">
         {loading ? <TableSkeleton rows={6} columns={6} /> : <div className="animate-fade-in-up"><Table
           columns={[
-            { key: 'id', header: 'Invoice', render: b => <span className="font-mono text-xs text-gray-700 dark:text-gray-300">{formatInvoiceNo(b.id, b.date)}</span> },
+            { key: 'id', header: 'Invoice', render: b => <span className="font-mono text-xs text-gray-700 dark:text-gray-300">{formatInvoiceNo(b.billNumber || b.id, b.date)}</span> },
             {
               key: 'date',
               header: 'Date',
@@ -363,7 +385,7 @@ export function ShopBillsHistory() {
             className="block w-full text-left bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 hover-lift active:scale-[0.99] transition-transform"
           >
             <div className="flex items-center justify-between gap-3">
-              <span className="font-mono text-xs text-gray-700 dark:text-gray-300">{formatInvoiceNo(b.id, b.date)}</span>
+              <span className="font-mono text-xs text-gray-700 dark:text-gray-300">{formatInvoiceNo(b.billNumber || b.id, b.date)}</span>
               {renderStatus(b)}
             </div>
             <p className="mt-2 font-medium text-gray-900 dark:text-white">{b.customerName}</p>
@@ -428,9 +450,9 @@ export function ShopBillsHistory() {
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 p-4">
               <p className="text-xs text-gray-500 mb-1">Customer</p>
               <p className="font-medium text-gray-900 dark:text-white">{selected.customerName}</p>
-              {selectedCustomer && (
+              {selectedCustomerPhone && (
                 <p className="text-xs text-gray-500 flex items-center gap-1.5 mt-1">
-                  <Phone size={12} /> {selectedCustomer.phone}
+                  <Phone size={12} /> {selectedCustomerPhone}
                 </p>
               )}
             </div>

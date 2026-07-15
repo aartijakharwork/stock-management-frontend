@@ -132,15 +132,15 @@ export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <ShopCatalogProvider>
-          <CatalogueProvider>
-            <PermissionProvider>
-              <ToastProvider>
+        <ToastProvider>
+          <ShopCatalogProvider>
+            <CatalogueProvider>
+              <PermissionProvider>
                 <RouterProvider router={router} />
-              </ToastProvider>
-            </PermissionProvider>
-          </CatalogueProvider>
-        </ShopCatalogProvider>
+              </PermissionProvider>
+            </CatalogueProvider>
+          </ShopCatalogProvider>
+        </ToastProvider>
       </AuthProvider>
     </ThemeProvider>
   );
