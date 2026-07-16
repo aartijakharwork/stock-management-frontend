@@ -41,6 +41,7 @@ export interface RolePermissions {
   expenses?: ModulePermissions;
   suppliers?: ModulePermissions;
   catalogue?: ModulePermissions;
+  [key: string]: ModulePermissions | undefined;
 }
 
 export const DEFAULT_MODULE_PERMISSIONS: ModulePermissions = { view: false, add: false, edit: false, delete: false };

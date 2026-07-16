@@ -8,7 +8,6 @@ import {
   UserCog,
   Shield,
   Settings,
-  CreditCard,
   X,
   Store,
   Wallet,
@@ -68,7 +67,6 @@ const navGroups: NavGroup[] = [
     label: 'Settings',
     items: [
       { to: '/shop/settings', icon: Settings, label: 'Settings', module: 'settings' },
-      { to: '/shop/subscription', icon: CreditCard, label: 'Subscription', module: 'subscription' },
     ],
   },
 ];
