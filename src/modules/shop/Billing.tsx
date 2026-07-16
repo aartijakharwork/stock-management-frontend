@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, type KeyboardEvent } from 'react';
 import {
   Package, PackageX, Plus, Minus, Trash2, Printer, Receipt, ShoppingCart, X,
   Banknote, Smartphone, CreditCard as CardIcon, Tag, MessageSquare,
-  ChevronDown, Clock, Phone, User as UserIcon, RotateCcw, Layers, ScanBarcode,
+  ChevronDown, Clock, Phone, User as UserIcon, RotateCcw, ScanBarcode,
   Share2, History, ArrowLeftRight,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
@@ -1145,8 +1145,8 @@ function CartPane({
   breakdownOpen, onBreakdownOpenChange,
   onInc, onDec, onTapQty, onRemove, onLineDiscount, onClear, onHold, onGenerate,
   draftInvoice,
-  splitMode, onSplitModeChange,
-  splitTenders, onSplitTendersChange, splitRemaining,
+  splitMode,
+  splitTenders, onSplitTendersChange,
   roundOffEnabled, onRoundOffChange, roundOff,
   mode,
   billType,
@@ -1155,17 +1155,6 @@ function CartPane({
   const tax = gstBreakdown(total);
   const isUdhaar = !splitMode && (paymentMethod as string) === 'udhaar';
 
-  const updateTender = (idx: number, patch: Partial<SplitTender>) => {
-    onSplitTendersChange(splitTenders.map((t, i) => i === idx ? { ...t, ...patch } : t));
-  };
-  const addTender = () => onSplitTendersChange([...splitTenders, { method: 'cash', amount: 0 }]);
-  const removeTender = (idx: number) => onSplitTendersChange(splitTenders.filter((_, i) => i !== idx));
-  const autoFillRemainingOnLast = () => {
-    if (splitTenders.length === 0) return;
-    const idx = splitTenders.length - 1;
-    const others = splitTenders.slice(0, idx).reduce((s, t) => s + t.amount, 0);
-    updateTender(idx, { amount: Math.max(0, total - others) });
-  };
 
   return (
     <Card padding={false} className="flex h-full min-h-0 max-h-[calc(100vh-120px)] flex-col overflow-hidden sm:max-h-none lg:h-full lg:max-h-none">
