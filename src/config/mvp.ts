@@ -47,6 +47,7 @@ export const MVP_HIDDEN_PATHS: string[] = [
   '/shop/subscription',
   '/shop/staff',
   '/shop/roles',
+  '/shop/reports',
 ];
 
 export function isPathHidden(path: string): boolean {

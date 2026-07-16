@@ -109,6 +109,14 @@ input:focus, select:focus, textarea:focus {
   animation: tooltipIn 0.12s ease-out both;
 }
 
+@keyframes tooltipUp {
+  from { opacity: 0; transform: translateY(6px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-tooltip-up {
+  animation: tooltipUp 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 /* Page route transition */
 @keyframes pageEnter {
   from { opacity: 0; transform: translateY(8px); }

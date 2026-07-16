@@ -22,6 +22,7 @@ import { useToast } from '../../context/ToastContext';
 import { useHeldBills } from '../../hooks/useHeldBills';
 import { useQuickCustomers } from '../../hooks/useQuickCustomers';
 import { useShopProfile } from '../../hooks/useShopProfile';
+import { printBill } from '../../utils/printBill';
 import { useShopCatalog } from '../../context/ShopCatalogContext';
 import { playSuccess, playError, playClick, hapticSuccess, hapticTap, hapticError } from '../../utils/feedback';
 import type { CartItem, InventoryItem, Bill, BillType, PaymentMethod, SplitTender, DiscountType, Customer } from '../../types';
@@ -467,6 +468,7 @@ export function ShopBilling() {
     splitRemaining,
     roundOffEnabled, onRoundOffChange: setRoundOffEnabled, roundOff,
     mode, returnRefBillId, onReturnRefChange: setReturnRefBillId,
+    billType,
   };
 
   return (
@@ -818,7 +820,7 @@ export function ShopBilling() {
             {billDiscountAmount > 0 && (
               <div className="flex justify-between text-sm"><span className="text-emerald-600">Bill discount</span><span className="font-medium tabular-nums text-emerald-600">−{formatCurrency(billDiscountAmount)}</span></div>
             )}
-            {(() => { const t = gstBreakdown(Math.abs(total)); return (
+            {billType === 'tax_invoice' && (() => { const t = gstBreakdown(Math.abs(total)); return (
               <>
                 <div className="flex justify-between text-[11px]"><span className="text-gray-400">CGST @ 9%</span><span className="tabular-nums text-gray-500">{formatCurrency(t.cgst)}</span></div>
                 <div className="flex justify-between text-[11px]"><span className="text-gray-400">SGST @ 9%</span><span className="tabular-nums text-gray-500">{formatCurrency(t.sgst)}</span></div>
@@ -943,10 +945,10 @@ export function ShopBilling() {
                     <p className="text-[14px] font-bold tracking-wide uppercase">{profile.name}</p>
                     <p className="text-[10.5px]">{profile.address}</p>
                     <p className="text-[10.5px]">Ph {profile.phone}</p>
-                    {invoiceTpl.showGstin && <p className="text-[10.5px]">GSTIN: {profile.gstin}</p>}
+                    {invoiceTpl.showGstin && receipt.billType === 'tax_invoice' && <p className="text-[10.5px]">GSTIN: {profile.gstin}</p>}
                   </div>
                   <div className="my-2 border-t border-dashed border-gray-400" />
-                  <p className="text-center text-[11px] font-bold tracking-[0.18em] uppercase">{receipt.isReturn ? 'Credit Note' : 'Tax Invoice'}</p>
+                  <p className="text-center text-[11px] font-bold tracking-[0.18em] uppercase">{receipt.isReturn ? 'Credit Note' : receipt.billType === 'tax_invoice' ? 'Tax Invoice' : receipt.billType === 'estimate' ? 'Estimate' : 'Cash Memo'}</p>
                   <div className="my-2 border-t border-dashed border-gray-400" />
                   <div className="space-y-0.5 text-[11px]">
                     <div className="flex justify-between"><span>Inv No</span><span className="font-semibold">{formatInvoiceNo(receipt.id, receipt.date)}</span></div>
@@ -998,9 +1000,13 @@ export function ShopBilling() {
                     )}
                     <div className="flex justify-between"><span>Subtotal</span><span>{(receipt.subtotal || Math.abs(receipt.total)).toLocaleString('en-IN')}</span></div>
                     {(receipt.discount ?? 0) > 0 && <div className="flex justify-between"><span>Discount</span><span>− {receipt.discount!.toLocaleString('en-IN')}</span></div>}
-                    <div className="flex justify-between"><span>Taxable</span><span>{tax.taxable.toLocaleString('en-IN')}</span></div>
-                    <div className="flex justify-between"><span>CGST @ 9%</span><span>{tax.cgst.toLocaleString('en-IN')}</span></div>
-                    <div className="flex justify-between"><span>SGST @ 9%</span><span>{tax.sgst.toLocaleString('en-IN')}</span></div>
+                    {receipt.billType === 'tax_invoice' && (
+                      <>
+                        <div className="flex justify-between"><span>Taxable</span><span>{tax.taxable.toLocaleString('en-IN')}</span></div>
+                        <div className="flex justify-between"><span>CGST @ 9%</span><span>{tax.cgst.toLocaleString('en-IN')}</span></div>
+                        <div className="flex justify-between"><span>SGST @ 9%</span><span>{tax.sgst.toLocaleString('en-IN')}</span></div>
+                      </>
+                    )}
                     {(receipt.roundOff ?? 0) !== 0 && <div className="flex justify-between"><span>Round-off</span><span>{(receipt.roundOff! >= 0 ? '+' : '−')} {Math.abs(receipt.roundOff!).toFixed(2)}</span></div>}
                   </div>
                   <div className="my-2 border-t-2 border-double border-gray-700" />
@@ -1048,7 +1054,7 @@ export function ShopBilling() {
               </div>
 
               <div className="grid grid-cols-3 gap-2">
-                <Button variant="secondary" size="lg" icon={<Printer size={16} />} onClick={() => window.print()}>Print</Button>
+                <Button variant="secondary" size="lg" icon={<Printer size={16} />} onClick={() => receipt && printBill(receipt, { name: profile.name, phone: profile.phone, address: profile.address, gstin: profile.gstin, footerText: invoiceTpl.footerText, showGstin: invoiceTpl.showGstin })}>Print</Button>
                 <Button variant="secondary" size="lg" icon={<Share2 size={16} />} onClick={handleShareReceipt}>WhatsApp</Button>
                 <Button variant="primary" size="lg" icon={<Receipt size={16} />} onClick={startNewBill}>New Bill</Button>
               </div>
@@ -1118,6 +1124,7 @@ interface CartPaneProps {
   onRoundOffChange: (v: boolean) => void;
   roundOff: number;
   mode: Mode;
+  billType: BillType;
   returnRefBillId: string;
   onReturnRefChange: (v: string) => void;
 }
@@ -1142,6 +1149,7 @@ function CartPane({
   splitTenders, onSplitTendersChange, splitRemaining,
   roundOffEnabled, onRoundOffChange, roundOff,
   mode,
+  billType,
 }: CartPaneProps) {
   const isEmpty = cart.length === 0;
   const tax = gstBreakdown(total);
@@ -1286,7 +1294,7 @@ function CartPane({
             onClick={() => onBreakdownOpenChange(!breakdownOpen)}
             className="w-full px-4 py-1.5 flex items-center justify-between text-[11px] text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50 border-t border-gray-200 dark:border-gray-800"
           >
-            <span>Tax breakdown · GST @ 18%</span>
+            <span>{billType === 'tax_invoice' ? 'Tax breakdown · GST @ 18%' : 'Price breakdown'}</span>
             <ChevronDown size={11} className={`transition-transform ${breakdownOpen ? 'rotate-180' : ''}`} />
           </button>
           {breakdownOpen && (
@@ -1294,9 +1302,13 @@ function CartPane({
               <div className="flex items-center justify-between"><span className="text-gray-500">Subtotal</span><span className="tabular-nums">{formatCurrency(subtotal)}</span></div>
               {lineDiscountTotal > 0 && <div className="flex items-center justify-between"><span className="text-emerald-600">Line discounts</span><span className="text-emerald-600 tabular-nums">−{formatCurrency(lineDiscountTotal)}</span></div>}
               {billDiscountAmount > 0 && <div className="flex items-center justify-between"><span className="text-emerald-600">Bill discount</span><span className="text-emerald-600 tabular-nums">−{formatCurrency(billDiscountAmount)}</span></div>}
-              <div className="flex items-center justify-between"><span className="text-gray-500">Taxable value</span><span className="tabular-nums">{formatCurrency(tax.taxable)}</span></div>
-              <div className="flex items-center justify-between"><span className="text-gray-500">CGST @ 9%</span><span className="tabular-nums">{formatCurrency(tax.cgst)}</span></div>
-              <div className="flex items-center justify-between"><span className="text-gray-500">SGST @ 9%</span><span className="tabular-nums">{formatCurrency(tax.sgst)}</span></div>
+              {billType === 'tax_invoice' && (
+                <>
+                  <div className="flex items-center justify-between"><span className="text-gray-500">Taxable value</span><span className="tabular-nums">{formatCurrency(tax.taxable)}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-gray-500">CGST @ 9%</span><span className="tabular-nums">{formatCurrency(tax.cgst)}</span></div>
+                  <div className="flex items-center justify-between"><span className="text-gray-500">SGST @ 9%</span><span className="tabular-nums">{formatCurrency(tax.sgst)}</span></div>
+                </>
+              )}
               {Math.abs(roundOff) > 0.001 && <div className="flex items-center justify-between"><span className="text-gray-500 flex items-center gap-1">Round-off <JargonHint term="roundoff" /></span><span className="tabular-nums">{(roundOff >= 0 ? '+' : '−')}{Math.abs(roundOff).toFixed(2)}</span></div>}
             </div>
           )}
@@ -1306,33 +1318,7 @@ function CartPane({
             <Toggle checked={roundOffEnabled} onChange={onRoundOffChange} />
           </div>
 
-          <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between gap-3">
-            <div className="text-[11px] text-gray-500 flex items-center gap-1"><Layers size={11} /> Split tender <JargonHint term="splittender" /></div>
-            <Toggle checked={splitMode} onChange={v => { onSplitModeChange(v); if (v && splitTenders.length === 1 && splitTenders[0].amount === 0) onSplitTendersChange([{ method: 'cash', amount: 0 }, { method: 'upi', amount: 0 }]); }} />
-          </div>
-
-          {splitMode ? (
-            <div className="px-4 pb-3 space-y-2">
-              {splitTenders.map((t, idx) => (
-                <div key={idx} className="flex gap-2 items-center">
-                  <select value={t.method} onChange={e => updateTender(idx, { method: e.target.value as TenderMethod })} className="text-[11px] h-8 rounded-md bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2 uppercase">
-                    {PAYMENT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                  </select>
-                  <input type="number" value={t.amount || ''} onChange={e => updateTender(idx, { amount: Number(e.target.value) })} placeholder="₹" className="flex-1 h-8 text-[11px] rounded-md bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2 tabular-nums" />
-                  {splitTenders.length > 1 && <button onClick={() => removeTender(idx)} className="text-gray-400 hover:text-red-500"><X size={13} /></button>}
-                </div>
-              ))}
-              <div className="flex items-center justify-between text-[11px]">
-                <button onClick={addTender} className="text-emerald-600 dark:text-emerald-400 hover:underline">+ Add tender</button>
-                <button onClick={autoFillRemainingOnLast} className="text-gray-500 hover:underline">Auto-fill</button>
-              </div>
-              <div className="flex items-center justify-between text-[11px] p-2 rounded bg-gray-50 dark:bg-gray-800/50">
-                <span className="text-gray-500">Remaining</span>
-                <span className={`font-semibold tabular-nums ${Math.abs(splitRemaining) < 1 ? 'text-emerald-600' : 'text-amber-600'}`}>{formatCurrency(Math.abs(splitRemaining))}</span>
-              </div>
-            </div>
-          ) : (
-            <div className="px-4 pb-2">
+          <div className="px-4 pb-2 border-t border-gray-200 dark:border-gray-800">
               <p className="text-[10px] font-semibold tracking-wider uppercase text-gray-500 mb-1.5">Payment method</p>
               <div className="grid grid-cols-4 gap-1.5">
                 {PAYMENT_METHODS.map(({ value, label, icon: Icon }) => (
@@ -1352,7 +1338,6 @@ function CartPane({
                 ))}
               </div>
             </div>
-          )}
         </div>
           </>
         )}

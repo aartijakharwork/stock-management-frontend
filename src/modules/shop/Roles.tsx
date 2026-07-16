@@ -13,13 +13,11 @@ import type { Role, RolePermissions, AppModule, ModuleAction, StaffMember } from
 const MODULE_META: { key: AppModule; label: string }[] = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'inventory', label: 'Inventory' },
-  { key: 'billing', label: 'Billing' },
+  { key: 'billing', label: 'Billing & Bills' },
   { key: 'customers', label: 'Customers' },
-  { key: 'bills', label: 'Bills History' },
   { key: 'staff', label: 'Staff' },
   { key: 'roles', label: 'Roles' },
   { key: 'settings', label: 'Settings' },
-  { key: 'subscription', label: 'Subscription' },
 ];
 
 const ACTION_LABELS: { key: ModuleAction; label: string }[] = [

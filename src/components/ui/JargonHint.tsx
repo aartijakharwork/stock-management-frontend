@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { HelpCircle } from 'lucide-react';
 
 interface JargonHintProps {
@@ -48,22 +49,46 @@ const GLOSSARY: Record<string, { title: string; description: string }> = {
 
 export function JargonHint({ term, description, className = '' }: JargonHintProps) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLSpanElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const tipRef = useRef<HTMLSpanElement>(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+
+  const reposition = useCallback(() => {
+    if (!btnRef.current) return;
+    const r = btnRef.current.getBoundingClientRect();
+    const tipW = 256;
+    let left = r.left + r.width / 2 - tipW / 2;
+    const pad = 8;
+    if (left < pad) left = pad;
+    if (left + tipW > window.innerWidth - pad) left = window.innerWidth - pad - tipW;
+    setPos({ top: r.top - 8, left });
+  }, []);
 
   useEffect(() => {
     if (!open) return;
-    const onClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    reposition();
+    const onClickOutside = (e: MouseEvent) => {
+      if (
+        btnRef.current?.contains(e.target as Node) ||
+        tipRef.current?.contains(e.target as Node)
+      ) return;
+      setOpen(false);
     };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, [open]);
+    const onScroll = () => setOpen(false);
+    document.addEventListener('mousedown', onClickOutside);
+    window.addEventListener('scroll', onScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', onClickOutside);
+      window.removeEventListener('scroll', onScroll, true);
+    };
+  }, [open, reposition]);
 
   const info = GLOSSARY[term.toLowerCase()] ?? { title: term, description: description ?? '' };
 
   return (
-    <span ref={ref} className={`relative inline-block ${className}`}>
+    <span className={`relative inline-block ${className}`}>
       <button
+        ref={btnRef}
         type="button"
         onClick={() => setOpen(v => !v)}
         className="inline-flex items-center justify-center w-4 h-4 rounded-full text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors align-text-bottom"
@@ -71,11 +96,16 @@ export function JargonHint({ term, description, className = '' }: JargonHintProp
       >
         <HelpCircle size={13} />
       </button>
-      {open && (
-        <span className="absolute z-50 left-1/2 -translate-x-1/2 mt-1.5 w-64 px-3 py-2 rounded-lg bg-gray-900 dark:bg-gray-800 text-white text-xs leading-relaxed shadow-lg border border-gray-800">
+      {open && createPortal(
+        <span
+          ref={tipRef}
+          className="fixed z-[9999] w-64 px-3 py-2 rounded-lg bg-gray-900 dark:bg-gray-800 text-white text-xs leading-relaxed shadow-lg border border-gray-800 animate-tooltip-up"
+          style={{ top: pos.top, left: pos.left, transform: 'translateY(-100%)' }}
+        >
           <span className="block font-semibold text-emerald-300 mb-0.5">{info.title}</span>
           <span className="block text-gray-200">{info.description}</span>
-        </span>
+        </span>,
+        document.body,
       )}
     </span>
   );

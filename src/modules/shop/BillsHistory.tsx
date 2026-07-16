@@ -17,6 +17,8 @@ import { api } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import { usePermissions } from '../../context/PermissionContext';
 import { getSecuritySettings } from '../../utils/security';
+import { printBill } from '../../utils/printBill';
+import { useShopProfile } from '../../hooks/useShopProfile';
 import { Input } from '../../components/ui/Input';
 import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
 import type { Bill, SortState } from '../../types';
@@ -80,7 +82,8 @@ export function ShopBillsHistory() {
   const { addToast } = useToast();
   const { can } = usePermissions();
   const { track } = useRecentlyViewed();
-  const canEdit = can('bills', 'edit');
+  const { profile, invoice: invoiceTpl } = useShopProfile();
+  const canEdit = can('billing', 'edit');
 
   const openBill = (b: Bill) => {
     setSelected(b);
@@ -293,7 +296,16 @@ export function ShopBillsHistory() {
       <div className="hidden sm:block">
         {loading ? <TableSkeleton rows={6} columns={6} /> : <div className="animate-fade-in-up"><Table
           columns={[
-            { key: 'id', header: 'Invoice', render: b => <span className="font-mono text-xs text-gray-700 dark:text-gray-300">{formatInvoiceNo(b.billNumber || b.id, b.date)}</span> },
+            { key: 'id', header: 'Invoice', render: b => (
+              <div>
+                <span className="font-mono text-xs text-gray-700 dark:text-gray-300">{formatInvoiceNo(b.billNumber || b.id, b.date)}</span>
+                <span className={`ml-1.5 inline-block text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                  b.billType === 'tax_invoice' ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400'
+                  : b.billType === 'estimate' ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400'
+                  : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                }`}>{b.billType === 'tax_invoice' ? 'TAX' : b.billType === 'estimate' ? 'EST' : 'CM'}</span>
+              </div>
+            ) },
             {
               key: 'date',
               header: 'Date',
@@ -374,7 +386,14 @@ export function ShopBillsHistory() {
             className="block w-full text-left bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 hover-lift active:scale-[0.99] transition-transform"
           >
             <div className="flex items-center justify-between gap-3">
-              <span className="font-mono text-xs text-gray-700 dark:text-gray-300">{formatInvoiceNo(b.billNumber || b.id, b.date)}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="font-mono text-xs text-gray-700 dark:text-gray-300">{formatInvoiceNo(b.billNumber || b.id, b.date)}</span>
+                <span className={`text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                  b.billType === 'tax_invoice' ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400'
+                  : b.billType === 'estimate' ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400'
+                  : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                }`}>{b.billType === 'tax_invoice' ? 'TAX' : b.billType === 'estimate' ? 'EST' : 'CM'}</span>
+              </div>
               {renderStatus(b)}
             </div>
             <p className="mt-2 font-medium text-gray-900 dark:text-white">{b.customerName}</p>
@@ -424,7 +443,7 @@ export function ShopBillsHistory() {
             {/* Header info */}
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 p-4 flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-[10px] font-semibold tracking-wider text-gray-500 uppercase">Tax Invoice</p>
+                <p className="text-[10px] font-semibold tracking-wider text-gray-500 uppercase">{selected.billType === 'tax_invoice' ? 'Tax Invoice' : selected.billType === 'estimate' ? 'Estimate' : 'Cash Memo'}</p>
                 <p className="mt-0.5 font-mono text-base font-semibold text-gray-900 dark:text-white">{formatInvoiceNo(selected.id, selected.date)}</p>
                 <p className="text-[11px] text-gray-500 mt-0.5">Internal ref · {selected.id}</p>
               </div>
@@ -484,7 +503,7 @@ export function ShopBillsHistory() {
                   <span className="text-emerald-600 tabular-nums">–{formatCurrency(selected.discount!)}</span>
                 </div>
               )}
-              {(() => {
+              {selected.billType === 'tax_invoice' && (() => {
                 const tax = gstBreakdown(selected.total);
                 return (
                   <>
@@ -506,7 +525,7 @@ export function ShopBillsHistory() {
               <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-800">
                 <div className="flex items-center gap-3">{renderStatus(selected)}</div>
                 <div className="text-right">
-                  <p className="text-xs text-gray-500">Total (incl. GST)</p>
+                  <p className="text-xs text-gray-500">{selected.billType === 'tax_invoice' ? 'Total (incl. GST)' : 'Total'}</p>
                   <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{formatCurrency(selected.total)}</p>
                 </div>
               </div>
@@ -527,7 +546,7 @@ export function ShopBillsHistory() {
             </div>
 
             <div className="flex gap-2 pt-2">
-              <Button variant="secondary" icon={<Printer size={14} />} onClick={() => window.print()} className="flex-1">Print</Button>
+              <Button variant="secondary" icon={<Printer size={14} />} onClick={() => printBill(selected, { name: profile.name, phone: profile.phone, address: profile.address, gstin: profile.gstin, footerText: invoiceTpl.footerText, showGstin: invoiceTpl.showGstin })} className="flex-1">Print</Button>
               {canEdit && selected.isUdhaar && !selected.paid && (
                 <Button variant="primary" onClick={() => markAsPaid(selected)} className="flex-1">Mark as paid</Button>
               )}

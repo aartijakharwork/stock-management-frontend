@@ -20,7 +20,7 @@ export interface ProductCategory {
   name: string;
 }
 
-export type AppModule = 'dashboard' | 'inventory' | 'billing' | 'customers' | 'bills' | 'staff' | 'roles' | 'settings' | 'subscription' | 'expenses' | 'suppliers' | 'catalogue';
+export type AppModule = 'dashboard' | 'inventory' | 'billing' | 'customers' | 'bills' | 'staff' | 'roles' | 'settings' | 'expenses' | 'suppliers' | 'catalogue';
 export type ModuleAction = 'view' | 'add' | 'edit' | 'delete';
 
 export interface ModulePermissions {
@@ -35,11 +35,9 @@ export interface RolePermissions {
   inventory: ModulePermissions;
   billing: ModulePermissions;
   customers: ModulePermissions;
-  bills: ModulePermissions;
   staff: ModulePermissions;
   roles: ModulePermissions;
   settings: ModulePermissions;
-  subscription: ModulePermissions;
   expenses?: ModulePermissions;
   suppliers?: ModulePermissions;
   catalogue?: ModulePermissions;
@@ -48,7 +46,7 @@ export interface RolePermissions {
 export const DEFAULT_MODULE_PERMISSIONS: ModulePermissions = { view: false, add: false, edit: false, delete: false };
 export const ALL_MODULE_PERMISSIONS: ModulePermissions = { view: true, add: true, edit: true, delete: true };
 
-export const ALL_MODULES: AppModule[] = ['dashboard', 'inventory', 'billing', 'customers', 'bills', 'staff', 'roles', 'settings', 'subscription', 'expenses', 'suppliers', 'catalogue'];
+export const ALL_MODULES: AppModule[] = ['dashboard', 'inventory', 'billing', 'customers', 'bills', 'staff', 'roles', 'settings', 'expenses', 'suppliers', 'catalogue'];
 export const ALL_ACTIONS: ModuleAction[] = ['view', 'add', 'edit', 'delete'];
 
 export interface InventoryItem {
