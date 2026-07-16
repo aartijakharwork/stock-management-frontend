@@ -1146,7 +1146,6 @@ function CartPane({
   onInc, onDec, onTapQty, onRemove, onLineDiscount, onClear, onHold, onGenerate,
   draftInvoice,
   splitMode,
-  splitTenders, onSplitTendersChange,
   roundOffEnabled, onRoundOffChange, roundOff,
   mode,
   billType,
