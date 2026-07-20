@@ -706,7 +706,7 @@ export function ShopInventory() {
                   key: 'item',
                   header: 'Item',
                   sortable: true,
-                  render: i => (
+                  render: (i: InventoryItem) => (
                     <div>
                       <p className="text-xs text-gray-500 flex items-center gap-1">
                         <Highlight text={i.category} query={searchForFilter} />
