@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import type { AuthUser, RolePermissions } from '../types';
-import { api, setAccessToken, getAccessToken } from '../api/client';
+import { api, setAccessToken, getAccessToken, refreshAccessToken } from '../api/client';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -12,6 +12,16 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+/** Decode JWT payload to extract expiry time (ms). No signature verification needed. */
+function getTokenExpiry(token: string): number | null {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
 
 function mapApiUser(data: Record<string, unknown>): AuthUser {
   return {
@@ -51,6 +61,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch(() => setAccessToken(null))
       .finally(() => setLoading(false));
   }, []);
+
+  // Proactive token refresh: schedule a refresh ~60s before the access token expires
+  useEffect(() => {
+    if (!user) return;
+
+    function scheduleRefresh() {
+      const token = getAccessToken();
+      if (!token) return undefined;
+
+      const expiry = getTokenExpiry(token);
+      if (!expiry) return undefined;
+
+      const now = Date.now();
+      // Refresh 60 seconds before expiry, but at least 5 seconds from now
+      const delay = Math.max(expiry - now - 60_000, 5_000);
+
+      return window.setTimeout(async () => {
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          // Recursively schedule the next refresh for the new token
+          timerRef = scheduleRefresh();
+        }
+      }, delay);
+    }
+
+    let timerRef = scheduleRefresh();
+    return () => {
+      if (timerRef != null) clearTimeout(timerRef);
+    };
+  }, [user]);
 
   const login = useCallback(async (email: string, password: string): Promise<{ ok: boolean; error?: string }> => {
     try {

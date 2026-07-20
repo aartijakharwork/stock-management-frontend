@@ -15,19 +15,33 @@ export function getAccessToken() {
   return accessToken;
 }
 
-async function refreshAccessToken(): Promise<string | null> {
-  try {
-    const res = await fetch(`${API_BASE}/auth/refresh`, {
-      method: 'POST',
-      credentials: 'include',
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    setAccessToken(data.accessToken);
-    return data.accessToken;
-  } catch {
-    return null;
-  }
+let refreshPromise: Promise<string | null> | null = null;
+
+export async function refreshAccessToken(): Promise<string | null> {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (res.ok) {
+        const { accessToken: newToken } = await res.json();
+        setAccessToken(newToken);
+        return newToken;
+      }
+      setAccessToken(null);
+      return null;
+    } catch {
+      setAccessToken(null);
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
 }
 
 export async function api(path: string, opts: RequestInit = {}): Promise<Response> {

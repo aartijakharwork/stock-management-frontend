@@ -263,10 +263,10 @@ export function ShopSuppliers() {
       {/* Add/Edit modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit supplier' : 'Add supplier'} size="md">
         <div className="space-y-4">
-          <Input label="Supplier name *" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Mehta Auto Distributors" />
+          <Input label="Supplier name *" value={form.name} onChange={e => setForm({ ...form, name: e.target.value.replace(/[^a-zA-Z\s.'-]/g, '') })} placeholder="e.g. Mehta Auto Distributors" />
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Contact person" value={form.contactPerson ?? ''} onChange={e => setForm({ ...form, contactPerson: e.target.value })} />
-            <Input label="Phone *" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="10-digit" />
+            <Input label="Contact person" value={form.contactPerson ?? ''} onChange={e => setForm({ ...form, contactPerson: e.target.value.replace(/[^a-zA-Z\s.'-]/g, '') })} />
+            <Input label="Phone *" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value.replace(/[^0-9]/g, '') })} placeholder="10-digit" maxLength={10} inputMode="tel" />
           </div>
           <Input label="Email" type="email" value={form.email ?? ''} onChange={e => setForm({ ...form, email: e.target.value })} />
           <Input label="GSTIN" value={form.gstin ?? ''} onChange={e => setForm({ ...form, gstin: e.target.value })} placeholder="07AABCM1234L1Z3" />

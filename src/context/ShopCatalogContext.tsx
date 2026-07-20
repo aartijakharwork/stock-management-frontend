@@ -296,6 +296,10 @@ export function ShopCatalogProvider({ children }: { children: ReactNode }) {
     try {
       const loaded = await fetchInventoryAllPages(api);
       if (!loaded.ok) {
+        if (loaded.res.status === 401) {
+          window.location.href = '/auth/login';
+          return;
+        }
         const msg = await readInventoryErrorMessage(loaded.res);
         setInventoryFetchError(msg);
         setState({ items: [], categories: [] });
@@ -344,6 +348,10 @@ export function ShopCatalogProvider({ children }: { children: ReactNode }) {
         const loaded = await fetchInventoryAllPages(api);
         if (cancelled) return;
         if (!loaded.ok) {
+          if (loaded.res.status === 401) {
+            window.location.href = '/auth/login';
+            return;
+          }
           const msg = await readInventoryErrorMessage(loaded.res);
           if (!cancelled) {
             setInventoryFetchError(msg);
@@ -369,6 +377,10 @@ export function ShopCatalogProvider({ children }: { children: ReactNode }) {
               const reload = await fetchInventoryAllPages(api);
               if (cancelled) return;
               if (!reload.ok) {
+                if (reload.res.status === 401) {
+                  window.location.href = '/auth/login';
+                  return;
+                }
                 const retryMsg = await readInventoryErrorMessage(reload.res);
                 if (!cancelled) {
                   setInventoryFetchError(retryMsg);

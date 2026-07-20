@@ -1547,7 +1547,8 @@ function CustomerBlock({
           type="tel"
           inputMode="tel"
           value={phone}
-          onChange={e => onPhoneChange(e.target.value.replace(/[^0-9+\- ]/g, ''))}
+          onChange={e => onPhoneChange(e.target.value.replace(/[^0-9]/g, ''))}
+          maxLength={10}
           placeholder="Phone (add for new customers)"
           className="w-full h-9 text-[13px] rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2.5 text-gray-900 dark:text-white tabular-nums"
         />

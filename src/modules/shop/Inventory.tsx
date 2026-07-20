@@ -68,6 +68,7 @@ const emptyItem: Omit<InventoryItem, 'id'> = {
   taxRate: DEFAULT_TAX_RATE,
   expiryDate: '',
   batchNo: '',
+  rackLocation: '',
 };
 
 const computeSellPrice = (mrp?: number, discountPercent?: number) => {
@@ -189,7 +190,7 @@ export function ShopInventory() {
   const [savePending, setSavePending] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
   const { addToast } = useToast();
-  const { can } = usePermissions();
+  const { can, isStaff } = usePermissions();
   const { track } = useRecentlyViewed();
   const cpSec = useCostPriceSecurity();
   const [cpPinInput, setCpPinInput] = useState('');
@@ -323,10 +324,11 @@ export function ShopInventory() {
       taxRate: item.taxRate ?? DEFAULT_TAX_RATE,
       expiryDate: item.expiryDate ?? '',
       batchNo: item.batchNo ?? '',
+      rackLocation: item.rackLocation ?? '',
     });
     setAddingCategory(false);
     setNewCategory('');
-    setShowAdvanced(Boolean(item.sku || item.barcode || item.hsn || item.supplierId));
+    setShowAdvanced(Boolean(item.sku || item.barcode || item.hsn || item.supplierId || item.rackLocation));
     setModalOpen(true);
     track({
       kind: 'item',
@@ -455,7 +457,7 @@ export function ShopInventory() {
             rows={filtered}
             size="sm"
           />
-          {cpSec.enabled && (
+          {!isStaff && cpSec.enabled && (
             cpSec.revealed
               ? <Button variant="ghost" size="sm" icon={<EyeOff size={14} />} onClick={() => cpSec.hide()}>Hide Cost</Button>
               : <Button variant="secondary" size="sm" icon={<Eye size={14} />} onClick={() => setCpPinModalOpen(true)}>Reveal Cost</Button>
@@ -722,6 +724,9 @@ export function ShopInventory() {
                           via {supplierIdLabel(i.supplierId)}
                         </p>
                       )}
+                      {i.rackLocation && (
+                        <span className="text-[11px] text-amber-600 dark:text-amber-400">📍 {i.rackLocation}</span>
+                      )}
                     </div>
                   ),
                 },
@@ -784,7 +789,7 @@ export function ShopInventory() {
                     </div>
                   ),
                 },
-              ]}
+              ].filter(col => !(isStaff && col.key === 'cost'))}
               data={visible}
               keyExtractor={i => i.id}
               sortState={sortState}
@@ -813,13 +818,16 @@ export function ShopInventory() {
                       <Highlight text={i.name} query={searchForFilter} />
                     </p>
                     <p className="text-xs text-gray-500 tabular-nums mt-0.5">
-                      {cpSec.isCostHidden
+                      {!isStaff && (cpSec.isCostHidden
                         ? <span className="inline-flex items-center gap-1"><Lock size={10} /> ••••••</span>
-                        : (i.costPrice ? <>Cost: {formatCurrency(i.costPrice)}</> : 'Cost: —')}
+                        : (i.costPrice ? <>Cost: {formatCurrency(i.costPrice)}</> : 'Cost: —'))}
                       {(i.discountPercent ?? 0) > 0 && (
-                        <span className="ml-1.5 text-emerald-600 dark:text-emerald-400">· {i.discountPercent}% off</span>
+                        <span className={`${isStaff ? '' : 'ml-1.5 '}text-emerald-600 dark:text-emerald-400`}>{!isStaff && '· '}{i.discountPercent}% off</span>
                       )}
                     </p>
+                    {i.rackLocation && (
+                      <span className="text-[11px] text-amber-600 dark:text-amber-400">📍 {i.rackLocation}</span>
+                    )}
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-[10px] text-gray-400 uppercase tracking-wider">MRP</p>
@@ -859,8 +867,8 @@ export function ShopInventory() {
         >
           <Input label="Item name *" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Engine Oil 5W-30" />
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {cpSec.enabled && cpSec.codedInputEnabled ? (
+          <div className={`grid ${isStaff ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'} gap-4`}>
+            {!isStaff && (cpSec.enabled && cpSec.codedInputEnabled ? (
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Cost price (coded)</label>
                 <div className="flex gap-1.5">
@@ -894,7 +902,7 @@ export function ShopInventory() {
               </div>
             ) : (
               <Input label="Cost price (₹)" type="number" value={form.costPrice || ''} onChange={e => setForm({ ...form, costPrice: Number(e.target.value) })} placeholder="0" />
-            )}
+            ))}
             <Input label="MRP (₹) *" type="number" value={form.mrp || ''} onChange={e => setForm({ ...form, mrp: Number(e.target.value) })} placeholder="0" />
             <Input
               label="Suggested Discount (%)"
@@ -966,7 +974,7 @@ export function ShopInventory() {
             <span className="flex items-center gap-2">
               <Sparkles size={14} className="text-emerald-500" />
               Advanced fields
-              <span className="text-xs text-gray-400 font-normal">SKU, Barcode, HSN, Tax, Reorder, Supplier, Expiry</span>
+              <span className="text-xs text-gray-400 font-normal">SKU, Barcode, HSN, Tax, Reorder, Supplier, Expiry, Rack</span>
             </span>
             {showAdvanced ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
@@ -1014,6 +1022,12 @@ export function ShopInventory() {
                 <Input label="Expiry date" type="date" value={form.expiryDate ?? ''} onChange={e => setForm({ ...form, expiryDate: e.target.value })} />
                 <Input label="Batch / Lot No." value={form.batchNo ?? ''} onChange={e => setForm({ ...form, batchNo: e.target.value })} placeholder="optional" />
               </div>
+              <Input
+                label="Rack Location"
+                value={form.rackLocation ?? ''}
+                onChange={e => setForm(f => ({ ...f, rackLocation: e.target.value }))}
+                placeholder="e.g. A1-03"
+              />
             </div>
           )}
 
@@ -1047,15 +1061,17 @@ export function ShopInventory() {
               </div>
 
               {/* Pricing grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Cost Price</p>
-                  {cpSec.isCostHidden ? (
-                    <span className="inline-flex items-center gap-1.5 text-sm text-gray-400"><Lock size={13} /> ••••••</span>
-                  ) : (
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">{viewItem.costPrice ? formatCurrency(viewItem.costPrice) : '—'}</p>
-                  )}
-                </div>
+              <div className={`grid grid-cols-2 ${isStaff ? '' : 'sm:grid-cols-4'} gap-3`}>
+                {!isStaff && (
+                  <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Cost Price</p>
+                    {cpSec.isCostHidden ? (
+                      <span className="inline-flex items-center gap-1.5 text-sm text-gray-400"><Lock size={13} /> ••••••</span>
+                    ) : (
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">{viewItem.costPrice ? formatCurrency(viewItem.costPrice) : '—'}</p>
+                    )}
+                  </div>
+                )}
                 <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
                   <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">MRP</p>
                   <p className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">{formatCurrency(mrp)}</p>
@@ -1065,16 +1081,18 @@ export function ShopInventory() {
                   <p className="text-sm font-semibold text-gray-900 dark:text-white tabular-nums">{formatCurrency(sellPrice)}</p>
                   {disc > 0 && <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5">{disc}% off MRP</p>}
                 </div>
-                <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Margin</p>
-                  {cpSec.isCostHidden ? (
-                    <span className="inline-flex items-center gap-1.5 text-sm text-gray-400"><Lock size={13} /> ••••••</span>
-                  ) : (
-                    <p className={`text-sm font-semibold tabular-nums ${margin != null && margin >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                      {margin != null ? `${margin.toFixed(1)}%` : '—'}
-                    </p>
-                  )}
-                </div>
+                {!isStaff && (
+                  <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Margin</p>
+                    {cpSec.isCostHidden ? (
+                      <span className="inline-flex items-center gap-1.5 text-sm text-gray-400"><Lock size={13} /> ••••••</span>
+                    ) : (
+                      <p className={`text-sm font-semibold tabular-nums ${margin != null && margin >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {margin != null ? `${margin.toFixed(1)}%` : '—'}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Stock & value */}
@@ -1091,7 +1109,7 @@ export function ShopInventory() {
               </div>
 
               {/* Additional details */}
-              {(viewItem.barcode || viewItem.hsn || viewItem.taxRate || viewItem.batchNo || viewItem.expiryDate) && (
+              {(viewItem.barcode || viewItem.hsn || viewItem.taxRate || viewItem.batchNo || viewItem.expiryDate || viewItem.rackLocation) && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-2 text-sm px-1">
                   {viewItem.barcode && (
                     <div>
@@ -1123,11 +1141,17 @@ export function ShopInventory() {
                       <p className="text-gray-900 dark:text-white">{viewItem.expiryDate}</p>
                     </div>
                   )}
+                  {viewItem.rackLocation && (
+                    <div>
+                      <span className="text-gray-500 text-xs">Rack Location:</span>
+                      <p className="text-amber-600 dark:text-amber-400">{viewItem.rackLocation}</p>
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Cost price reveal for this modal */}
-              {cpSec.enabled && cpSec.isCostHidden && (
+              {!isStaff && cpSec.enabled && cpSec.isCostHidden && (
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20">
                   <Lock size={14} className="text-purple-600 dark:text-purple-400" />
                   <span className="text-xs text-purple-700 dark:text-purple-300 flex-1">Cost price and margin are protected</span>
@@ -1227,7 +1251,7 @@ interface BulkImportModalProps {
 }
 
 const REQUIRED_HEADERS = ['name', 'price', 'stock', 'category'];
-const ALL_HEADERS = ['name', 'sku', 'barcode', 'category', 'unit', 'costPrice', 'price', 'stock', 'reorderLevel', 'hsn', 'taxRate', 'supplierId'];
+const ALL_HEADERS = ['name', 'sku', 'barcode', 'category', 'unit', 'costPrice', 'price', 'stock', 'reorderLevel', 'hsn', 'taxRate', 'supplierId', 'rackLocation'];
 
 function parseCSV(text: string): { headers: string[]; rows: string[][] } {
   const lines = text.replace(/\r/g, '').split('\n').filter(l => l.trim().length > 0);
@@ -1348,6 +1372,7 @@ function BulkImportModal({ open, onClose, onImport, importBusy = false }: BulkIm
             hsn: get('hsn') || undefined,
             taxRate,
             supplierId,
+            rackLocation: get('rackLocation') || undefined,
           },
         };
       });

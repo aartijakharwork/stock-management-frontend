@@ -804,8 +804,8 @@ function CustomerForm({ form, formError, setForm, onCancel, onSave, saveLabel }:
       }}
     >
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Input label="Name *" placeholder="e.g. Ramesh Kumar" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} error={formError.name} />
-        <Input label="Phone *" placeholder="10-digit mobile number" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} error={formError.phone} />
+        <Input label="Name *" placeholder="e.g. Ramesh Kumar" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value.replace(/[^a-zA-Z\s.'-]/g, '') }))} error={formError.name} />
+        <Input label="Phone *" placeholder="10-digit mobile number" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value.replace(/[^0-9]/g, '') }))} error={formError.phone} maxLength={10} inputMode="tel" />
       </div>
       <Input label="Email" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="optional" />
       <Input label="Address" value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="Street, area, city" />

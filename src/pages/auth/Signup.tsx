@@ -68,10 +68,11 @@ export function Signup() {
               <Input
                 label="Phone"
                 value={form.phone}
-                onChange={e => update('phone', e.target.value)}
+                onChange={e => update('phone', e.target.value.replace(/[^0-9]/g, ''))}
                 placeholder="10-digit number"
                 error={errors.phone}
                 inputMode="tel"
+                maxLength={10}
               />
             </div>
             <div className="relative">

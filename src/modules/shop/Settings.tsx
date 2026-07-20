@@ -247,7 +247,7 @@ export function ShopSettings() {
               />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="Phone *" value={profileLocal.phone} error={profileErrors.phone} onChange={e => { setProfileLocal(p => ({ ...p, phone: e.target.value })); setProfileErrors(e2 => { const n = { ...e2 }; delete n.phone; return n; }); }} />
+              <Input label="Phone *" value={profileLocal.phone} error={profileErrors.phone} onChange={e => { setProfileLocal(p => ({ ...p, phone: e.target.value.replace(/[^0-9]/g, '') })); setProfileErrors(e2 => { const n = { ...e2 }; delete n.phone; return n; }); }} maxLength={10} inputMode="tel" />
               <Input label="Email" type="email" value={profileLocal.email} error={profileErrors.email} onChange={e => { setProfileLocal(p => ({ ...p, email: e.target.value })); setProfileErrors(e2 => { const n = { ...e2 }; delete n.email; return n; }); }} />
             </div>
             <Input label="GSTIN" value={profileLocal.gstin} error={profileErrors.gstin} onChange={e => { setProfileLocal(p => ({ ...p, gstin: e.target.value })); setProfileErrors(e2 => { const n = { ...e2 }; delete n.gstin; return n; }); }} placeholder="07AABCU9603R1ZM" />

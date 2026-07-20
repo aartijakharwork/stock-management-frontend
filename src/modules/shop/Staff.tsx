@@ -348,9 +348,9 @@ export function ShopStaff() {
             handleSave();
           }}
         >
-          <Input label="Full name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Rahul Mehta" />
+          <Input label="Full name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value.replace(/[^a-zA-Z\s.'-]/g, '') })} placeholder="e.g. Rahul Mehta" />
           <Input label="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="e.g. rahul@shop.in" />
-          <Input label="Phone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="10-digit mobile number" inputMode="tel" />
+          <Input label="Phone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value.replace(/[^0-9]/g, '') })} placeholder="10-digit mobile number" inputMode="tel" maxLength={10} />
           <Dropdown label="Role" options={roleFormOptions} value={form.roleId} onChange={e => setForm({ ...form, roleId: e.target.value })} />
           <div className="flex items-center justify-between rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-3">
             <div><p className="text-sm text-gray-900 dark:text-white">Active</p><p className="text-xs text-gray-500">Inactive staff cannot sign in.</p></div>
@@ -372,9 +372,9 @@ export function ShopStaff() {
           }}
         >
           <p className="text-sm text-gray-500">Send an invite link. They can join using this link to create their staff account.</p>
-          <Input label="Name" value={inviteForm.name} onChange={e => setInviteForm({ ...inviteForm, name: e.target.value })} placeholder="e.g. Arjun Verma" />
+          <Input label="Name" value={inviteForm.name} onChange={e => setInviteForm({ ...inviteForm, name: e.target.value.replace(/[^a-zA-Z\s.'-]/g, '') })} placeholder="e.g. Arjun Verma" />
           <Input label="Email" value={inviteForm.email} onChange={e => setInviteForm({ ...inviteForm, email: e.target.value })} placeholder="e.g. arjun@email.com" />
-          <Input label="Phone (optional)" value={inviteForm.phone} onChange={e => setInviteForm({ ...inviteForm, phone: e.target.value })} placeholder="10-digit mobile" inputMode="tel" />
+          <Input label="Phone (optional)" value={inviteForm.phone} onChange={e => setInviteForm({ ...inviteForm, phone: e.target.value.replace(/[^0-9]/g, '') })} placeholder="10-digit mobile" inputMode="tel" maxLength={10} />
           <Dropdown label="Assign role" options={roleFormOptions} value={inviteForm.roleId} onChange={e => setInviteForm({ ...inviteForm, roleId: e.target.value })} />
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" type="button" onClick={() => setInviteOpen(false)}>Cancel</Button>

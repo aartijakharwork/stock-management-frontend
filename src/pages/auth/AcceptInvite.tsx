@@ -120,9 +120,10 @@ export function AcceptInvite() {
             <Input
               label="Phone (optional)"
               value={phone}
-              onChange={e => setPhone(e.target.value)}
+              onChange={e => setPhone(e.target.value.replace(/[^0-9]/g, ''))}
               placeholder="10-digit number"
               inputMode="tel"
+              maxLength={10}
             />
             <div className="relative">
               <Input
