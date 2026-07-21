@@ -662,7 +662,7 @@ export function ShopBilling() {
                     </div>
                     <div className="min-w-0">
                       <p className="text-[13px] font-medium text-gray-900 dark:text-white truncate leading-tight">{item.name}</p>
-                      <p className="text-[10px] text-gray-500 truncate mt-0.5">{item.sku ? `${item.sku} · ` : ''}{item.category}</p>
+                      <p className="text-[10px] text-gray-500 truncate mt-0.5">{item.sku ? `${item.sku} · ` : ''}{item.category}{item.rackLocation ? ` · 📍${item.rackLocation}` : ''}</p>
                     </div>
                     <div className="flex items-baseline justify-between gap-1 mt-auto">
                       <div className="min-w-0 flex items-baseline gap-1.5">
