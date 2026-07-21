@@ -71,8 +71,8 @@ export function Staff() {
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Staff' : 'Add Staff'}>
         <div className="space-y-4">
-          <Input label="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Full name" />
-          <Input label="Phone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="Phone number" />
+          <Input label="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value.replace(/[^a-zA-Z\s.'-]/g, '') })} placeholder="Full name" />
+          <Input label="Phone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value.replace(/[^0-9]/g, '') })} placeholder="Phone number" maxLength={10} inputMode="tel" />
           <Dropdown label="Role" options={roleOptions} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} placeholder="Select role" />
           <div className="flex items-center gap-2">
             <input

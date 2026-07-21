@@ -141,6 +141,7 @@ function mapApiRowToItem(row: Record<string, unknown>): InventoryItem {
     taxRate: n('taxRate') != null && n('taxRate') !== '' ? Number(n('taxRate')) : undefined,
     expiryDate: n('expiryDate') != null ? String(n('expiryDate')) : undefined,
     batchNo: n('batchNo') != null ? String(n('batchNo')) : undefined,
+    rackLocation: n('rackLocation') != null ? String(n('rackLocation')) : undefined,
     createdAt:
       n('createdAt') != null && String(n('createdAt')).trim() ? String(n('createdAt')) : undefined,
     updatedAt:
