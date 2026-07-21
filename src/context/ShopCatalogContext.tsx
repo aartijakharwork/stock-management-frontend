@@ -175,6 +175,7 @@ function itemToApiBody(item: Omit<InventoryItem, 'id'>) {
   if (item.batchNo) body.batchNo = item.batchNo;
   if (item.reorderLevel != null && item.reorderLevel !== undefined) body.reorderLevel = item.reorderLevel;
   if (item.taxRate != null && item.taxRate !== undefined) body.taxRate = item.taxRate;
+  if (item.rackLocation) body.rackLocation = item.rackLocation;
   return body;
 }
 
@@ -203,6 +204,7 @@ function bulkRowToApiBody(row: Omit<InventoryItem, 'id'>) {
   if (row.supplierId) body.supplierId = row.supplierId;
   if (row.expiryDate) body.expiryDate = row.expiryDate;
   if (row.batchNo) body.batchNo = row.batchNo;
+  if (row.rackLocation) body.rackLocation = row.rackLocation;
   return body;
 }
 
